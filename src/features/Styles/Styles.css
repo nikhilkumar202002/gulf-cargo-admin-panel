@@ -1,0 +1,250 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{
+    --primary-color: #262262;
+    --secondary-color: #ED2624;
+    --text-color: #1e1e1e;
+      --muted:#6b7280;
+  --surface:#ffffff;
+  --border:#e5e7eb;
+  --ring: rgba(38,34,98,.18);
+}
+
+.card-icon{
+    background-color: var(--secondary-color);
+    width: 45px;
+    height: 45px;
+    color: white;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+}
+.card-text{
+    font-size: 14px;
+    font-weight: 600;
+    color: black;
+}
+.card-staff-number{
+    font-weight: 800;
+    color: #454545;
+}
+.dashboard-card{
+    padding: 20px;
+    background-color: white;
+    border-radius: 15px;
+}
+.dashboard-heading{
+    font-size: 20px;
+    font-weight: 600;
+    padding: 10px 0px 15px;
+}
+.dashboard-table-wrapper{
+    width: 100% !important;
+}
+.staff-attendance,.cargo-movement,.dashboard-cargo-table{
+    width: 100%;
+}
+.dashboard-overview{
+    font-size: 22px;
+    font-weight: 600;
+    color: #1e1e1e;
+    padding: 15px 0px 8px;
+}
+.dashboard-cargo-list-heading h1{
+    font-size: 22px;
+    font-size: 22px;
+    font-weight: 600;
+    color: #1e1e1e;
+    padding: 15px 0px 8px;
+}
+
+/* All branches page styles */
+
+.allbranches-table-head{
+    font-size: 15px;
+    color: var(--primary-color);
+}
+
+.all-branches-row-add-new button{
+    background-color: var(--secondary-color);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+}
+.all-branches-row-add-new button:hover{
+    background-color: #c41c19;
+    transition: 400ms;
+}
+.add-branch-heading{
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--primary-color);
+    padding: 10px 0px 20px;
+}
+
+/* Staff page visible */
+
+.staff-create-form-btn{
+    font-size: 14px;
+    font-weight: 600;
+}
+.staffcreate-heading, .staff-panel-heading{
+    font-size: 23px !important;
+    font-weight: 600;
+    padding: 25px 0px 15px;
+}
+.staff-form-header-icon,.staff-panel-heading-icon{
+    background-color: var(--secondary-color);
+    width: 42px;
+    height: 42px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 10px;
+    font-size: 22px;
+    color: white;
+}
+
+/* visa */
+
+.visa-table-heading{
+    font-size: 16px;
+    color: #1e1e1e;
+}
+.visa-table-content{
+    font-size: 14px;
+    color: #363636;
+}
+
+/* Driver view page */
+
+.all-driver-view th{
+    font-size: 14px;
+    color: var(--primary-color);
+}
+.all-driver-view-content{
+    font-size: 14px;
+}
+
+/* Shipment pages styles */
+
+.shipment-report-key-card{
+    padding: 20px;
+    background-color: white;
+    border-radius: 15px;
+}
+.shipment-report-key-content{
+    font-family: "Roboto";
+    line-height: 22px;
+    padding-top: 5px;
+    h1{
+        font-size: 20px;
+        font-weight: 600;
+    }
+    p{
+        font-size: 16px;
+        font-weight: 400;
+        color: #454545;
+    }
+}
+.shipment-report-key-icon{
+    background-color: var(--secondary-color);
+    color: white;
+    font-size: 25px;
+    width: 45px;
+    height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+}
+.shipment-report-heading{
+    font-size: 20px;
+    font-family: "Roboto";
+    font-weight: 600;
+    color: #1e1e1e;
+    padding-bottom: 15px;
+}
+.shipment-report-table-container{
+    padding: 20px;
+    background-color: white;
+    border-radius: 15px;
+}
+.shipment-report-filter-box{
+    input{
+        font-size: 14px;
+    }
+}
+.shipment-report-filter-btn{
+    padding-top: 20px;
+    font-size: 15px;
+    font-family: "Roboto";
+}
+
+/* view branch styles */
+.view-branch-header{
+    margin-bottom: 20px;
+}
+.view-branch-header h2{
+    font-size: 22px;
+    font-family: "Roboto";
+    font-weight: 600;
+    color: #1e1e1e;
+}
+
+/* add driver */
+
+.add-driver-header{
+    padding-bottom: 10px;
+    margin-bottom: 30px;
+    border-bottom: 1px solid #cdcdcd;
+}
+.add-driver-submit{
+    padding-bottom: 30px;
+}
+
+/* media query */
+
+@media (max-width:1024px) {
+    .card-icon{
+        width: 30px;
+        height: 30px;
+        font-size: 14px !important;
+    }
+    .dashboard-card{
+        padding: 10px;
+        display: flex;
+    }
+}
+
+/* Skeleton Loader Shimmer Animation */
+.skel {
+  background: #e5e7eb; /* gray-200 */
+  position: relative;
+  overflow: hidden;
+}
+
+.skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    rgba(229,231,235,0) 0%,
+    rgba(255,255,255,0.75) 50%,
+    rgba(229,231,235,0) 100%
+  );
+  animation: skel-shimmer 1.2s infinite;
+}
+
+@keyframes skel-shimmer {
+  100% { transform: translateX(100%); }
+}
+

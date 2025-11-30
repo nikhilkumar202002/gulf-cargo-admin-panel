@@ -1,0 +1,61 @@
+:root{
+    --primary-color: #262262;
+    --secondary-color: #ED2624;
+    --text-color: #1e1e1e;
+}
+.physical-invoice-header-heading{
+    font-size: 22px;
+    font-family: "Inter";
+    font-weight: 600;
+}
+.physical-invoice-header-icon{
+      color: var(--secondary-color);
+}
+.physical-invoice-form{
+    font-family: "Inter";
+    label{
+        font-size: 15px;
+        font-weight: 600;
+    }
+    input{
+        font-size: 17px;
+    }
+}
+.bill-submit-btn{
+    background-color: var(--secondary-color);
+    padding: 8px 32px;
+    border-radius: 10px;
+    font-size: 17px;
+    font-weight: 600;
+    color: white;
+}
+.bill-submit-btn:hover{
+    background-color: var(--primary-color);
+    transition: 400ms;
+}
+.bill-reset-btn{
+    background-color: black;
+    padding: 8px 32px;
+    color: white;
+    border-radius: 10px;
+    font-size: 17px;
+    font-weight: 600;
+}
+.single-bill-copy{
+    background-color: var(--secondary-color);
+    padding: 8px 20px;
+    font-family: "Inter";
+    font-weight: 600;
+    color: white;
+    border-radius: 10px;
+    font-size: 14px;
+}
+.single-bill-back{
+      background-color: var(--primary-color);
+    padding: 8px 20px;
+    font-family: "Inter";
+    font-weight: 600;
+    color: white;
+    border-radius: 10px;
+    font-size: 14px;
+}

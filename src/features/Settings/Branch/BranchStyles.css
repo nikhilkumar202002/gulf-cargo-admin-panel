@@ -1,0 +1,329 @@
+/* Header bar */
+.ipx-head-bar{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 28px rgba(2,6,23,.06);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.ipx-head-bar::before{
+  content:"";
+  position:absolute; inset:0 0 auto 0; height:4px;
+  background: linear-gradient(90deg,var(--secondary-color),#ff6b6b);
+}
+.ipx-brand .ipx-title{ margin:0; color: var(--primary-color); font-weight:800; letter-spacing:.2px; }
+.ipx-brand .ipx-sub{ margin:.25rem 0 0; color: var(--muted); font-size: 13px; }
+
+/* Toolbar */
+.ipx-toolbar{ display:grid; grid-template-columns: 1fr max-content max-content; gap: 12px; align-items:end; margin-top: 12px; }
+.ipx-field{ display:grid; gap:6px; min-width: 180px; }
+.ipx-field.grow{ min-width: 240px; }
+
+/* Inputs & buttons */
+.ipx-input{
+  width:100%; border:1px solid var(--border); border-radius:12px;
+  padding:10px 12px; font-size:14px; color:var(--text-color); background:#fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ipx-input-lg{ padding:12px 14px; font-size:15px; }
+.ipx-input:focus{ outline:none; border-color:var(--primary-color); box-shadow:0 0 0 3px var(--ring); }
+
+.ipx-btn{ border-radius:10px; padding:8px 12px; font-weight:700; font-size:14px; border:1px solid transparent; cursor:pointer; }
+.ipx-btn.sm{ padding:6px 10px; font-size:13px; }
+.ipx-btn.primary{ background:var(--primary-color); color:#fff; }
+.ipx-btn.primary:hover{ filter:brightness(1.05); }
+.ipx-btn.ghost{ background:#fff; color:#0f172a; border-color:#e2e8f0; }
+.ipx-btn-cta{ border-radius:12px; padding:12px 16px; box-shadow:0 6px 18px rgba(38,34,98,.18); display:inline-flex; align-items:center; gap:8px; }
+
+/* Search icon inside input */
+.ipx-searchpad{ padding-left:40px; }
+.ipx-search-icon{ position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#9aa3af; }
+
+/* Card */
+.ipx-card{ background:#fff; border:1px solid var(--border); border-radius:16px;  box-shadow:0 6px 20px rgba(2,6,23,.06); }
+
+/* Table */
+.ipx-table-wrap{ width:100%; overflow:auto; }
+.ipx-table{ width:100%; border-collapse:separate; border-spacing:0; }
+.ipx-table-sticky thead th{ position:sticky; top:0; z-index:1; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
+.ipx-table-compact thead th{ padding:12px 14px; font-size:12.5px; color:#475569; font-weight:700; text-align: left;}
+.ipx-table-compact tbody td{ padding:11px 14px; font-size:13.25px; color:#0f172a; border-bottom:1px solid #eef2f7; }
+.ipx-table-compact tfoot td{ padding:12px 14px; }
+.ipx-table-hover tbody tr{ transition:background .15s ease; }
+.ipx-table-hover tbody tr:hover{ background:#fafafa; }
+
+/* Zebra */
+.ipx-table tbody tr:nth-child(odd) { background:#ffffff; }
+.ipx-table tbody tr:nth-child(even){ background:#fcfcfd; }
+
+/* Pills */
+.ipx-pill{ display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.2px; border:1px solid transparent; }
+.ipx-pill.ok{ background:#ecfdf5; color:#047857; border-color:#befae3; }
+.ipx-pill.muted{ background:#f1f5f9; color:#334155; border-color:#e2e8f0; }
+
+/* More (actions) button */
+.ipx-more-btn{ padding:6px; border-radius:8px; border:1px solid transparent; background:#fff; }
+.ipx-more-btn:hover{ background:#f3f4f6; }
+
+/* Pagination */
+.ipx-pagination{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; }
+.ipx-results-count{ color:#64748b; font-size:12.5px; }
+.ipx-pager{ display:inline-flex; align-items:center; gap:8px; }
+
+/* Width helpers & responsive hides */
+.w-64{width:64px}.w-80{width:80px}.w-120{width:120px}.w-160{width:160px}.w-220{width:220px}.w-240{width:240px}
+@media (max-width: 900px){
+  .ipx-toolbar{ grid-template-columns: 1fr 1fr; }
+  .ipx-btn-cta{ grid-column: 1 / -1; justify-self:end; }
+  .ipx-col-hide-md{ display:none; }
+}
+@media (max-width: 640px){
+  .ipx-toolbar{ grid-template-columns: 1fr; }
+  .ipx-btn-cta{ width:100%; justify-content:center; }
+  .ipx-col-hide-sm{ display:none; }
+}
+
+/* Wrapper spacing */
+.vb-wrap{ padding:18px; }
+
+/* Reuse your header bar style */
+.ipx-head-bar{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 28px rgba(2,6,23,.06);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.ipx-head-bar::before{
+  content:"";
+  position:absolute; inset:0 0 auto 0; height:4px;
+  background: linear-gradient(90deg,var(--secondary-color),#ff6b6b);
+}
+.ipx-brand .ipx-title{ margin:0; color: var(--primary-color); font-weight:800; letter-spacing:.2px; }
+.ipx-brand .ipx-sub{ margin:.25rem 0 0; color: var(--muted); font-size: 13px; }
+
+.vb-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+.vb-head-actions{ display:flex; gap:8px; }
+.vb-back{ display:inline-flex; gap:8px; align-items:center; }
+
+/* Card */
+.vb-card{
+  background:#fff; border:1px solid var(--border); border-radius:16px;
+  padding:16px; box-shadow:0 6px 20px rgba(2,6,23,.06); margin-bottom:16px;
+}
+.vb-error{ border-color:#fecaca; background:#fef2f2; color:#b91c1c; }
+
+/* Title Row */
+.vb-title-row{ display:flex; align-items: center; justify-content: space-between; gap:12px; padding:6px 2px 14px; border-bottom:1px dashed #eef2f7; }
+.vb-title-main{ display:flex; flex-direction:column; gap:6px; }
+.vb-branch-name{ margin:0; font-size:20px; font-weight:800; color:#0f172a; }
+.vb-badges{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.vb-code-chip{ background:#f1f5f9; color:#0f172a; border:1px solid #e2e8f0; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:700; }
+.vb-visit{ display:inline-flex; gap:8px; align-items:center; }
+
+/* Grid layout */
+.vb-grid{
+  display:flex;
+  width: 100%; 
+  gap:16px; 
+  padding-top:14px;
+  /* grid-template-columns: repeat(12, minmax(0,2fr)); */
+}
+.vb-section{
+  grid-column: span 12;
+  background:#fafafa; border:1px solid #eef2f7; border-radius:12px; padding:12px;
+}
+@media (min-width: 900px){
+  .vb-section:nth-child(1){ grid-column: span 4; }
+  .vb-section:nth-child(2){ grid-column: span 5; }
+  .vb-section:nth-child(3){ grid-column: span 3; }
+}
+
+/* Section head */
+.vb-section-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.vb-section-head h4{ margin:0; font-weight:800; color:#111827; }
+.vb-icon{ color: var(--primary-color); }
+
+/* Key/Value rows */
+.vb-kv{ display:grid; grid-template-columns: 140px 1fr; gap:8px; padding:8px 6px; border-top:1px dashed #eaecef; }
+.vb-kv:first-of-type{ border-top:0; }
+.vb-kv span{ color:#64748b; font-size:12.5px; font-weight:700; }
+.vb-kv div{ color:#0f172a; font-size:14px; }
+
+/* link */
+.vb-link{ display:inline-flex; align-items:center; gap:8px; color:var(--primary-color); font-weight:700; text-decoration:none; }
+.vb-link:hover{ text-decoration:underline; }
+
+/* pills already defined in your shared styles; ensure present */
+.ipx-pill{ display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.2px; border:1px solid transparent; }
+.ipx-pill.ok{ background:#ecfdf5; color:#047857; border-color:#befae3; }
+.ipx-pill.muted{ background:#f1f5f9; color:#334155; border-color:#e2e8f0; }
+
+/* Let value cells actually shrink inside the grid */
+.vb-kv div { 
+  min-width: 0;              /* <-- critical for CSS grid overflow */
+}
+
+/* Wrap long strings like emails/URLs instead of spilling out */
+.vb-clip {
+  overflow-wrap: anywhere;   /* modern */
+  word-break: break-word;    /* fallback */
+  max-width: 100%;
+}
+
+/* (Optional) single-line with ellipsis – use on elements where you want truncation */
+.vb-ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: block;
+}
+
+.skel{background:#e5e7eb;position:relative;overflow:hidden}
+.skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,rgba(229,231,235,0) 0%,rgba(255,255,255,.75) 50%,rgba(229,231,235,0) 100%);
+  animation:skel-shimmer 1.2s infinite}
+@keyframes skel-shimmer{100%{transform:translateX(100%)}}
+
+.add-cargo-header{
+  padding-bottom: 20px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid #c9c9c9;
+}
+.header-cargo-icon{
+  font-size: 30px;
+  font-weight: 600;
+  color: black;
+}
+.header-cargo-heading{
+  font-size: 25px;
+  font-weight: 600;
+  font-family: "Inter";
+  color: var(--secondary-color);
+}
+
+/* Branded file input button (ED2624) */
+.file-input-red {
+  /* keep base look tidy */
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #e2e8f0; /* slate-200 */
+  border-radius: 0.5rem;      /* rounded-lg */
+  background: #fff;
+}
+
+.file-input-red:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(237, 38, 36, 0.25); /* soft red focus ring */
+  border-color: #fecaca; /* light red border hint */
+}
+
+/* Modern browsers */
+.file-input-red::file-selector-button {
+  margin-right: 1rem;
+  border: 0;
+  border-radius: 0.5rem;      /* match rounded-lg */
+  padding: 0.5rem 1rem;       /* px-4 py-2 */
+  background: #ED2624;        /* brand red */
+  color: #ffffff;             /* accessible contrast */
+  cursor: pointer;
+  transition: background 150ms ease-in-out, transform 50ms ease-in-out;
+  font-weight: 600;
+}
+
+.file-input-red:hover::file-selector-button {
+  background: #c61f1f; /* darker hover */
+}
+
+.file-input-red:active::file-selector-button {
+  transform: translateY(1px);
+}
+
+/* Safari / old WebKit */
+.file-input-red::-webkit-file-upload-button {
+  margin-right: 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #ED2624;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 150ms ease-in-out, transform 50ms ease-in-out;
+  font-weight: 600;
+}
+
+.file-input-red:hover::-webkit-file-upload-button {
+  background: #c61f1f;
+}
+
+.file-input-red:active::-webkit-file-upload-button {
+  transform: translateY(1px);
+}
+
+/* === Equal height for all controls === */
+:root {
+  --field-h: 44px; /* tweak once, applies everywhere */
+}
+
+/* Single-line controls */
+.form-grid input:not([type="file"]),
+.form-grid select {
+  height: var(--field-h);
+  padding: 0 12px;                 /* consistent vertical rhythm */
+  border-radius: 0.5rem;           /* rounded-lg */
+  line-height: calc(var(--field-h) - 2px);
+}
+
+/* Textarea: at least same height, can grow */
+.form-grid textarea {
+  min-height: var(--field-h);
+  padding: 10px 12px;
+  border-radius: 0.5rem;
+  line-height: 1.4;
+  resize: vertical;                /* keep UX nice */
+}
+
+/* File input (branded) matches height */
+.form-grid .file-input-red {
+  height: var(--field-h);
+  padding: 4px 4px;
+  display: inline-flex;
+  align-items: center;             /* centers the filename text */
+  border-radius: 0.5rem;
+}
+
+/* Style the button inside the file input to match height */
+.form-grid .file-input-red::file-selector-button,
+.form-grid .file-input-red::-webkit-file-upload-button {
+  height: calc(var(--field-h) - 8px); /* leaves a little vertical padding */
+  padding: 0 12px;
+  margin-right: 12px;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #ED2624;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease-in-out, transform 50ms ease-in-out;
+}
+
+.form-grid .file-input-red:hover::file-selector-button,
+.form-grid .file-input-red:hover::-webkit-file-upload-button {
+  background: #c61f1f;
+}
+
+.form-grid .file-input-red:active::file-selector-button,
+.form-grid .file-input-red:active::-webkit-file-upload-button {
+  transform: translateY(1px);
+}
+
+.view-branch-logo{
+  width: 120px;
+  height: 45px;
+}

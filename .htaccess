@@ -1,0 +1,29 @@
+# --- Single Page App history-fallback for cPanel/Apache ---
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # If the app is in a subfolder, set it here. Otherwise leave as "/"
+  # RewriteBase /your-subfolder/
+  RewriteBase /
+
+  # 1) Serve existing files/directories as-is
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 2) Don't rewrite API or static asset requests (adjust to your setup)
+  RewriteCond %{REQUEST_URI} !^/api/ [NC]
+  RewriteCond %{REQUEST_URI} !^/public/api/ [NC]
+  RewriteCond %{REQUEST_URI} !^/storage/ [NC]
+
+  # Common static extensions to leave alone
+  RewriteCond %{REQUEST_URI} !\.(?:ico|gif|png|jpg|jpeg|svg|webp|avif|css|js|mjs|map|txt|pdf|woff2?|ttf|eot|mp4|webm|ogg)$ [NC]
+
+  # 3) Everything else → index.html (lets the SPA router handle it)
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Optional: if mod_rewrite is disabled on the host, this can still save you.
+# It will show index.html on 404s, but be careful—it hides real 404s.
+# ErrorDocument 404 /index.html
