@@ -168,10 +168,10 @@ export default function PartyList() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen">
       <Toaster position="top-right" />
       
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto w-full">
         {/* Header */}
         <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>

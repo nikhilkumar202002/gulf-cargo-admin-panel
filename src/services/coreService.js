@@ -286,6 +286,11 @@ export const getDocumentTypes = async (params = {}) => {
   return data?.data ?? data ?? [];
 };
 
+export const getActiveDocumentTypes = async (params = {}) => {
+  const { data } = await api.get("/active-document-types", { params });
+  return data?.data ?? data ?? [];
+};
+
 export const getActiveCustomerTypes = async () => {
   const { data } = await api.get("/customer-types", { params: { status: 1 } });
   return data?.data ?? data ?? [];

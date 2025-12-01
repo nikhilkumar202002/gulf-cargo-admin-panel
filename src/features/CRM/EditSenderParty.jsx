@@ -2,7 +2,7 @@ import React from "react";
 import { Toaster, toast } from "react-hot-toast";
 
 import { getProfile } from "../../api/accountApi";
-import { getDocumentTypes } from "../../api/documentTypeApi";
+import { getActiveDocumentTypes } from "../../services/coreService";
 import { getPhoneCodes } from "../../api/phoneCodeApi";
 import { updateParty } from "../../api/partiesApi";
 
@@ -100,7 +100,7 @@ export default function EditSenderParty({ partyId, initialParty, onClose, onSucc
       try {
         setDocsLoading(true);
         setDocsError("");
-        const docsRes = await getDocumentTypes({ per_page: 1000 });
+        const docsRes = await getActiveDocumentTypes({ per_page: 1000 });
         if (!alive) return;
         setDocTypes(normalizeList(docsRes));
       } catch {
@@ -218,6 +218,7 @@ export default function EditSenderParty({ partyId, initialParty, onClose, onSucc
   };
 
   return (
+    
     <form onSubmit={handleSubmit} className="space-y-6">
       <Toaster position="top-right" />
       <h2 className="text-xl font-semibold text-slate-800">Edit Sender</h2>

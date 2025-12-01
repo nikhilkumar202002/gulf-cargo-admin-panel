@@ -8,7 +8,8 @@ import { FaUserTie, FaArrowLeft } from "react-icons/fa";
 import { getProfile } from "../../services/authService";
 import { createParty } from "../../services/partyService";
 import {
-  getDocumentTypes,
+  // Renamed import for document types
+  getActiveDocumentTypes, // Assuming this is the new correct service function
   getCountries,
   getStatesByCountry,
   getDistrictsByState,
@@ -29,7 +30,7 @@ const fieldDisabled = "disabled:cursor-not-allowed disabled:bg-slate-50";
 
 const getId = (o) => String(o?.id ?? o?._id ?? o?.code ?? o?.uuid ?? o?.value ?? "");
 
-const DOC_LABELS = ["document_type","doc_type","type_name","documentName","document","name","title","label","type"];
+const DOC_LABELS = ["document_name"];
 const getDocId = (d) => String(d?.id ?? d?._id ?? d?.code ?? d?.uuid ?? d?.value ?? "");
 const getDocLabel = (d) => DOC_LABELS.map(k => d?.[k]).find(v => typeof v === "string" && v.trim()) || `Doc ${getDocId(d)}`;
 
@@ -63,6 +64,10 @@ const normalizeList = (p) => {
 /* phone code helpers */
 const getDialCode = (o) =>
   String(o?.dial_code ?? o?.phone_code ?? o?.code ?? o?.calling_code ?? o?.isd ?? o?.prefix ?? "").replace(/\s+/g, "");
+
+// Helper to display code without '+'
+const displayDialCode = (code) => String(code || "").replace("+", "");
+
 
 const composeE164 = (code, local) => {
   const c = String(code || "").trim();
@@ -228,7 +233,7 @@ export default function CreateParty({
   /* forms */
   const initSender = React.useMemo(() => ({
     role: "sender",
-    name: "", contactNumber: "", whatsappNumber: "",
+    name: "", contactNumber: "", whatsappNumber: "", // Added whatsappNumber here
     senderIdType: "", senderId: "", documents: [],
   }), []);
   const initReceiver = React.useMemo(() => ({
@@ -257,8 +262,8 @@ export default function CreateParty({
     (async () => {
       try {
         setDocsLoading(true); setDocsError("");
-        // Added status: 1 to filter active docs only
-        const docsRes = await getDocumentTypes({ per_page: 1000, status: 1 });
+        // Using getActiveDocumentType as requested
+        const docsRes = await getActiveDocumentTypes({ per_page: 1000, status: 1 });
         setDocTypes(normalizeList(docsRes));
       } catch {
         setDocTypes([]); setDocsError("Failed to load document types.");
@@ -385,21 +390,8 @@ export default function CreateParty({
     }
 
     if (name === "documents") {
-      setSubmitNotice("");
       const picked = Array.from(files || []);
-      const processed = await Promise.all(picked.map(compressIfImage));
-      const overs = processed.filter((f) => bytesToMB(f.size) > MAX_FILE_MB);
-      if (overs.length) setSubmitNotice(`Some files exceed ${MAX_FILE_MB}MB: ${overs.map(f => f.name).join(", ")}`);
-      const kept = processed.filter((f) => bytesToMB(f.size) <= MAX_FILE_MB);
-      const totalMB = kept.reduce((s, f) => s + bytesToMB(f.size), 0);
-      if (totalMB > MAX_TOTAL_MB) {
-        let running = 0, trimmed = [];
-        for (const f of kept) { const next = running + bytesToMB(f.size); if (next > MAX_TOTAL_MB) break; running = next; trimmed.push(f); }
-        setSender((p) => ({ ...p, documents: trimmed }));
-        setSubmitNotice(`Total attachments trimmed to ${MAX_TOTAL_MB}MB. Kept ${trimmed.length}/${processed.length}.`);
-        return;
-      }
-      return setSender((p) => ({ ...p, documents: kept }));
+      return setSender((p) => ({ ...p, documents: picked }));
     }
 
     setSender((p) => ({ ...p, [name]: value }));
@@ -434,21 +426,8 @@ export default function CreateParty({
     }
 
     if (name === "documents") {
-      setSubmitNotice("");
       const picked = Array.from(files || []);
-      const processed = await Promise.all(picked.map(compressIfImage));
-      const overs = processed.filter((f) => bytesToMB(f.size) > MAX_FILE_MB);
-      if (overs.length) setSubmitNotice(`Some files exceed ${MAX_FILE_MB}MB: ${overs.map(f => f.name).join(", ")}`);
-      const kept = processed.filter((f) => bytesToMB(f.size) <= MAX_FILE_MB);
-      const totalMB = kept.reduce((s, f) => s + bytesToMB(f.size), 0);
-      if (totalMB > MAX_TOTAL_MB) {
-        let running = 0, trimmed = [];
-        for (const f of kept) { const next = running + bytesToMB(f.size); if (next > MAX_TOTAL_MB) break; running = next; trimmed.push(f); }
-        setReceiver((p) => ({ ...p, documents: trimmed }));
-        setSubmitNotice(`Total attachments trimmed to ${MAX_TOTAL_MB}MB. Kept ${trimmed.length}/${processed.length}.`);
-        return;
-      }
-      return setReceiver((p) => ({ ...p, documents: kept }));
+      return setReceiver((p) => ({ ...p, documents: picked }));
     }
 
     setReceiver((p) => ({ ...p, [name]: type === "checkbox" ? checked : value }));
@@ -461,6 +440,7 @@ export default function CreateParty({
       name: sender.name,
       customer_type_id: CUSTOMER_TYPE.sender,
       contact_number: composeE164(contactCode, sender.contactNumber),
+      // Added whatsapp_number
       whatsapp_number: composeE164(whatsappCode, sender.whatsappNumber),
       document_type_id: sender.senderIdType ? Number(sender.senderIdType) : "",
       document_id: sender.senderId,
@@ -507,12 +487,12 @@ export default function CreateParty({
     setSubmitError(""); setFieldErrors({});
 
     if (role === "sender") {
-      if (!sender.name || !sender.senderIdType || !sender.senderId) {
-        return setSubmitError("Sender: Name, ID Type and Document ID are required.");
+      if (!sender.name) {
+        return setSubmitError("Sender: Name is required.");
       }
     } else {
-      if (!receiver.name || !receiver.receiverIdType || !receiver.receiverId || !receiver.address) {
-        return setSubmitError("Receiver: Name, ID Type, Document ID and Address are required.");
+      if (!receiver.name || !receiver.address) {
+        return setSubmitError("Receiver: Name and Address are required.");
       }
     }
 
@@ -531,7 +511,8 @@ export default function CreateParty({
             Role: "Sender",
             Name: sender.name,
             Phone: composeE164(contactCode, sender.contactNumber),
-            WhatsApp: composeE164(whatsappCode, sender.whatsappNumber),
+            // Added WhatsApp to details for Sender
+            WhatsApp: composeE164(whatsappCode, sender.whatsappNumber), 
             "ID Type": (docTypes.find(d => getDocId(d) === String(sender.senderIdType)) && getDocLabel(docTypes.find(d => getDocId(d) === String(sender.senderIdType)))) || sender.senderIdType,
             "Document ID": sender.senderId,
             Branch: branchName || branchId || "—",
@@ -640,7 +621,7 @@ export default function CreateParty({
             {/* sender */}
             {role === "sender" && (
               <>
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
                   <div>
                     <Label required>Sender Name</Label>
                     <input name="name" value={sender.name} onChange={onSenderChange} className={fieldBase} placeholder="Full name" />
@@ -660,8 +641,9 @@ export default function CreateParty({
                           className={`${fieldBase} ${fieldDisabled}`}
                           disabled={phoneCodesLoading}
                         >
+                          {/* Use displayDialCode to remove '+' */}
                           {allDialCodes.map((c) => (
-                            <option key={c} value={c}>{c}</option>
+                            <option key={c} value={c}>{displayDialCode(c)}</option>
                           ))}
                         </select>
                       )}
@@ -677,11 +659,43 @@ export default function CreateParty({
                       />
                     </div>
                   </div>
+
+                     <div>
+                        <Label>WhatsApp Number</Label>
+                        <div className="grid grid-cols-[120px,1fr] gap-2">
+                        {phoneCodesLoading ? (
+                            <Skel />
+                        ) : (
+                            <select
+                                value={whatsappCode}
+                                onChange={(e) => setWhatsappCode(e.target.value)}
+                                className={`${fieldBase} ${fieldDisabled}`}
+                                disabled={phoneCodesLoading}
+                            >
+                                {/* Use displayDialCode to remove '+' */}
+                                {allDialCodes.map((c) => (
+                                    <option key={c} value={c}>{displayDialCode(c)}</option>
+                                ))}
+                            </select>
+                        )}
+                        <input
+                            type="tel"
+                            inputMode="tel"
+                            autoComplete="tel"
+                            name="whatsappNumber"
+                            value={sender.whatsappNumber ?? ""}
+                            onChange={onSenderChange}
+                            className={fieldBase}
+                            placeholder="e.g., 5XXXXXXXX"
+                        />
+                        </div>
+                    </div>
                 </div>
+
 
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
                   <div>
-                    <Label required>ID Type</Label>
+                    <Label>ID Type</Label>
                     {docsLoading ? <Skel /> : (
                       <select name="senderIdType" value={String(sender.senderIdType || "")} onChange={onSenderChange} className={`${fieldBase} ${fieldDisabled}`} disabled={docsLoading}>
                         <option value="">{docsLoading ? "Loading..." : "Select ID Type"}</option>
@@ -692,7 +706,7 @@ export default function CreateParty({
                     <ErrorMsg>{fieldErrors.document_type_id?.[0]}</ErrorMsg>
                   </div>
                   <div>
-                    <Label required>Document ID</Label>
+                    <Label>Document ID</Label>
                     <input name="senderId" value={sender.senderId} onChange={onSenderChange} className={fieldBase} placeholder="e.g., ABC12345" />
                     <ErrorMsg>{fieldErrors.document_id?.[0]}</ErrorMsg>
                   </div>
@@ -824,8 +838,9 @@ export default function CreateParty({
                           className={`${fieldBase} ${fieldDisabled}`}
                           disabled={phoneCodesLoading}
                         >
+                           {/* Use displayDialCode to remove '+' */}
                           {allDialCodes.map((c) => (
-                            <option key={c} value={c}>{c}</option>
+                            <option key={c} value={c}>{displayDialCode(c)}</option>
                           ))}
                         </select>
                       )}
@@ -865,8 +880,9 @@ export default function CreateParty({
                           className={`${fieldBase} ${fieldDisabled}`}
                           disabled={phoneCodesLoading || receiver.useSameForContact}
                         >
+                           {/* Use displayDialCode to remove '+' */}
                           {allDialCodes.map((c) => (
-                            <option key={c} value={c}>{c}</option>
+                            <option key={c} value={c}>{displayDialCode(c)}</option>
                           ))}
                         </select>
                       )}
@@ -890,7 +906,7 @@ export default function CreateParty({
 
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
                   <div>
-                    <Label required>ID Type</Label>
+                    <Label>ID Type</Label>
                     {docsLoading ? <Skel /> : (
                       <select name="receiverIdType" value={String(receiver.receiverIdType || "")} onChange={onReceiverChange} className={`${fieldBase} ${fieldDisabled}`} disabled={docsLoading}>
                         <option value="">{docsLoading ? "Loading..." : "Select ID Type"}</option>
@@ -901,7 +917,7 @@ export default function CreateParty({
                     <ErrorMsg>{fieldErrors.document_type_id?.[0]}</ErrorMsg>
                   </div>
                   <div>
-                    <Label required>Document ID</Label>
+                    <Label>Document ID</Label>
                     <input name="receiverId" value={receiver.receiverId} onChange={onReceiverChange} className={fieldBase} placeholder="e.g., XYZ98765" />
                     <ErrorMsg>{fieldErrors.document_id?.[0]}</ErrorMsg>
                   </div>
