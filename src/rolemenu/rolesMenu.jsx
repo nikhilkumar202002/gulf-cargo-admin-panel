@@ -61,7 +61,7 @@ export const rolesMenu = {
       icon: <RiMailSendFill />,
       label: "Sender / Receiver",
       submenus: [
-        { name: "View Customers", path: "/customers" },
+        { name: "Customers List", path: "/customers" },
         { name: "Create Customers", path: "/customers/create" },
       ]
     },

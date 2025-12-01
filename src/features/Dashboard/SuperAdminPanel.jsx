@@ -9,8 +9,8 @@ import { RiMailSendFill, RiUserReceivedFill } from "react-icons/ri";
 import { PiBuildingOfficeFill } from "react-icons/pi";
 import { TbTruckDelivery, TbClockHour4 } from "react-icons/tb";
 import { BsCollectionFill } from "react-icons/bs";
-import "../Styles/Styles.css"; // Reuse the same styles
-import { getCounters } from "../../api/dashboardCountersApi"; // ✅ aggregator with branches included
+import "../Styles/Styles.css";
+import { getCounters,} from "../../services/coreService";
 
 /* ---------------- Utility ---------------- */
 const num = (v) => (typeof v === "number" && !Number.isNaN(v) ? v : 0);

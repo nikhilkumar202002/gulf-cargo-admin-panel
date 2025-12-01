@@ -2,9 +2,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getPartyByIdFlexible } from "../../services/partyService";
-import { FiMail, FiPhone, FiMapPin, FiHome, FiFileText, FiDownload, FiHash, FiUser, FiArrowLeft, FiEdit } from "react-icons/fi";
-import EditParties from "./EditParties";
+import {
+  FiPhone,
+  FiMapPin,
+  FiHome,
+  FiFileText,
+  FiDownload,
+  FiHash,
+  FiUser,
+  FiCalendar,
+  FiClock,
+} from "react-icons/fi";
+// Removed: import EditParties from "./EditParties";
 
+// --- Utility Functions (Kept as is) ---
 const s = (v, fallback = "—") => (v === null || v === undefined || String(v).trim() === "" ? fallback : String(v));
 
 const pick = (obj, keys, fallback = "—") => {
@@ -16,44 +27,61 @@ const pick = (obj, keys, fallback = "—") => {
   }
   return fallback;
 };
+// --- Utility Functions End ---
+
+// --- Components (Kept as is) ---
+
 const Pill = ({ children, tone = "slate" }) => {
   const tones = {
-    green: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    red: "bg-rose-50 text-rose-700 ring-rose-100",
+    green: "bg-emerald-100 text-emerald-800 ring-emerald-200", // Brighter background
+    red: "bg-rose-100 text-rose-800 ring-rose-200",
     slate: "bg-slate-100 text-slate-700 ring-slate-200",
-    blue: "bg-blue-50 text-blue-700 ring-blue-100",
+    blue: "bg-blue-100 text-blue-800 ring-blue-200",
   };
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${tones[tone] || tones.slate}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+        tones[tone] || tones.slate
+      }`}
+    >
       {children}
     </span>
   );
 };
 
-const Card = ({ title, icon, children, className = "" }) => (
-  <div className={`rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm ${className}`}>
-    <div className="mb-3 flex items-center gap-2 text-slate-500">
-      {icon}
-      <h3 className="text-xs font-semibold uppercase tracking-wide">{title}</h3>
+const Card = ({ title, icon, children, className = "", headerContent = null, subTitle = null }) => (
+  <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
+    <div className="flex items-start justify-between p-4 pb-3">
+      <div className="flex items-center gap-2 text-slate-500">
+        {icon}
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide">{title}</h3>
+          {subTitle && <p className="text-xs font-normal capitalize text-slate-400">{subTitle}</p>}
+        </div>
+      </div>
+      {headerContent}
     </div>
-    <div className="space-y-2 text-sm">{children}</div>
+    <div className="space-y-3 p-4 pt-0 text-sm">{children}</div>
   </div>
 );
 
-const Row = ({ label, value, mono = false, align = "right" }) => {
+const Row = ({ label, value, mono = false, align = "right", icon: Icon = null }) => {
   const alignCls =
-    align === "left" ? "text-left" : align === "center" ? "text-center" : "text-right";
+    align === "left" ? "justify-start text-left" : align === "center" ? "justify-center text-center" : "justify-between text-right";
+  const labelCls = Icon ? "flex items-center gap-2" : "shrink-0";
+
   return (
-    <div className="grid grid-cols-[110px,1fr] items-start gap-3">
-      <span className="shrink-0 text-slate-500">{label}</span>
+    <div className="flex items-start gap-3">
+      <span className={`min-w-[110px] text-slate-500 ${labelCls}`}>
+        {Icon && <Icon className="h-4 w-4 text-slate-400" />} {label}
+      </span>
       <span
         className={[
-          "min-w-0 font-medium text-slate-800", // allow the cell to actually shrink
+          "min-w-0 flex-1 font-medium text-slate-800",
           alignCls,
           mono ? "font-mono" : "",
-          // WRAPPING / BREAKING:
-          "break-all",               // break long tokens (emails, ids)
-          "whitespace-pre-wrap",     // allow wrapping
+          "break-all",
+          "whitespace-pre-wrap",
         ].join(" ")}
       >
         {value || "—"}
@@ -61,7 +89,6 @@ const Row = ({ label, value, mono = false, align = "right" }) => {
     </div>
   );
 };
-
 
 const Avatar = ({ name = "—" }) => {
   const initials = (name || "—")
@@ -72,36 +99,42 @@ const Avatar = ({ name = "—" }) => {
     .join("")
     .toUpperCase();
   return (
-    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-800 to-slate-600 text-lg font-semibold text-white shadow-sm ring-1 ring-slate-300">
+    <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-xl font-bold text-white shadow-lg ring-2 ring-indigo-300">
       {initials}
     </div>
   );
 };
+// --- Components End ---
 
-export default function ViewParty() {
-  const { id } = useParams();
-  const navigate = useNavigate();
+
+// --- Main Component ---
+export default function ViewParty({ id: modalId, isModalView = false }) {
+  const params = useParams();
+  const id = modalId || params.id;
+
+  // const navigate = useNavigate(); // Removed since Back button is gone
   const [isLoading, setIsLoading] = useState(true);
   const [err, setErr] = useState("");
   const [party, setParty] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
+  // Removed: const [showEditModal, setShowEditModal] = useState(false);
+
+  // Function to fetch and set party data
+  const fetchParty = async () => {
+    setIsLoading(true);
+    setErr("");
+    try {
+      const res = await getPartyByIdFlexible(id);
+      const obj = res?.data ?? res;
+      setParty(obj || null);
+    } catch (e) {
+      setErr(e?.message || "Failed to load party.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    (async () => {
-      setIsLoading(true);
-      setErr("");
-      try {
-        const res = await getPartyByIdFlexible(id);
-        // your partiesApi returns {success?, data?} – support both shapes
-        const obj = res?.data ?? res;
-        setParty(obj || null);
-      } catch (e) {
-        
-        setErr(e?.message || "Failed to load party.");
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+    fetchParty();
   }, [id]);
 
   const statusTone = useMemo(() => {
@@ -109,11 +142,13 @@ export default function ViewParty() {
     return s === "active" ? "green" : s === "inactive" ? "red" : "slate";
   }, [party]);
 
+  // --- Loading/Error/Not Found States ---
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
-          Loading party details…
+        <div className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm animate-pulse">
+          <div className="h-4 bg-slate-200 rounded w-1/4 mb-4"></div>
+          <div className="h-2 bg-slate-200 rounded w-full"></div>
         </div>
       </div>
     );
@@ -123,7 +158,7 @@ export default function ViewParty() {
     return (
       <div className="p-6">
         <div className="mx-auto max-w-6xl rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-700 shadow-sm">
-          {err}
+          Error: {err}
         </div>
       </div>
     );
@@ -133,15 +168,16 @@ export default function ViewParty() {
     return (
       <div className="p-6">
         <div className="mx-auto max-w-6xl rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-800 shadow-sm">
-          No party found.
+          No party found with ID: {id}.
         </div>
       </div>
     );
   }
+  // --- End States ---
 
+  // --- Data Extraction ---
   const {
     name = "—",
-    email = "",
     contact_number = "",
     whatsapp_number = "",
     status = "unknown",
@@ -163,25 +199,23 @@ export default function ViewParty() {
   const city = pick(party, ["city"], "—");
   const postalCode = pick(party, ["postal_code", "pincode"], "—");
   const documents = Array.isArray(party.documents) ? party.documents : [];
+  // --- End Data Extraction ---
 
   return (
     <section className="p-6">
-      <div className="mx-auto max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/60 shadow">
-        {/* Hero header */}
-        <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50 p-6 md:flex-row md:items-center md:justify-between">
+      <div className="mx-auto max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-xl">
+        {/* Header and Actions */}
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-white p-6 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <Avatar name={name} />
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold text-slate-900">{name || "—"}</h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold text-slate-900">{name || "Unnamed Party"}</h1>
                 <Pill tone={statusTone}>{status || "—"}</Pill>
+
+                {/* Removed: Edit Button */}
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                {email && (
-                  <span className="inline-flex items-center gap-1">
-                    <FiMail className="text-slate-400" /> {email}
-                  </span>
-                )}
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
                 {contact_number && (
                   <span className="inline-flex items-center gap-1">
                     <FiPhone className="text-slate-400" /> {contact_number}
@@ -192,79 +226,67 @@ export default function ViewParty() {
                     <FiPhone className="text-slate-400" /> WhatsApp: {whatsapp_number}
                   </span>
                 )}
-                <span className="inline-flex items-center gap-1 text-slate-400">
+                <span className="inline-flex items-center gap-1 text-slate-500">
                   <FiHash /> ID: {party.id}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => navigate(-1)}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-              <FiArrowLeft /> Back
-            </button>
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white shadow-sm transition hover:bg-blue-700"
-            >
-              <FiEdit /> Edit
-            </button>
-          </div>
+          {/* Removed: Back Button */}
         </div>
 
-        {/* At a glance */}
-        <div className="grid gap-4 p-6 md:grid-cols-3">
-          <Card title="Identity" icon={<FiUser />}>            
+        {/* Details Grid */}
+        <div className="grid gap-6 p-6 lg:grid-cols-3">
+          {/* Identity Card (Card 1) */}
+          <Card title="Core Identity" icon={<FiUser />} className="lg:col-span-1">
             <Row label="Customer Type" value={s(customerType)} />
             <Row label="Type ID" value={s(customerTypeId)} mono />
             <Row label="Branch" value={s(branchName)} />
             <Row label="Branch ID" value={s(branchId)} mono />
           </Card>
 
-          <Card title="Document" icon={<FiFileText />}>
+          {/* Document Card (Card 2) */}
+          <Card title="Identification Document" icon={<FiFileText />} className="lg:col-span-1">
             <Row label="Type" value={s(docType)} />
             <Row label="Type ID" value={s(docTypeId)} mono />
             <Row label="Document No." value={s(docId)} mono />
           </Card>
 
-          <Card title="Timeline" icon={<FiHash />}>
-            <Row label="Created" value={s(created_at ? new Date(created_at).toLocaleString() : "—")} />
-            <Row label="Updated" value={s(updated_at ? new Date(updated_at).toLocaleString() : "—")} />
+          {/* Timeline Card (Card 3) - Enhanced Style */}
+          <Card title="Timeline" icon={<FiClock />} className="lg:col-span-1">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <Row
+                label="Created At"
+                value={s(created_at ? new Date(created_at).toLocaleString() : "—")}
+                icon={FiCalendar}
+                align="left"
+              />
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <Row
+                label="Updated At"
+                value={s(updated_at ? new Date(updated_at).toLocaleString() : "—")}
+                icon={FiCalendar}
+                align="left"
+              />
+            </div>
           </Card>
         </div>
 
-        {/* Details grid */}
-        <div className="grid gap-6 p-6 md:grid-cols-3">
-          {/* Contact */}
-          <Card title="Contact" icon={<FiPhone />} className="md:col-span-1">
-            <Row
-                  label="Email"
-                  align="left"
-                  value={
-                    email ? (
-                      <a
-                        href={`mailto:${email}`}
-                        className="break-all text-blue-600 underline decoration-blue-400 underline-offset-2 hover:text-blue-700"
-                      >
-                        {email}
-                      </a>
-                    ) : (
-                      "—"
-                    )
-                  }
-                />
-            <Row label="Phone" value={contact_number} />
-            <Row label="WhatsApp" value={whatsapp_number} />
+        {/* Contact and Address Grid (Merged and Detailed) */}
+        <div className="grid gap-6 p-6 pt-0 md:grid-cols-2 lg:grid-cols-3">
+          {/* Contact Details (Card 4) */}
+          <Card title="Contact Details" icon={<FiPhone />} className="md:col-span-1">
+            <Row label="Phone" value={contact_number} icon={FiPhone} align="left" />
+            <Row label="WhatsApp" value={whatsapp_number} icon={FiPhone} align="left" />
             <div className="pt-2 text-xs text-slate-500">
-              Tip: copy & paste as E.164 for consistency.
+              Note: International format (E.164) is recommended.
             </div>
           </Card>
 
-          {/* Location */}
-          <Card title="Location" icon={<FiMapPin />} className="md:col-span-1">
+          {/* Location Details (Card 5) */}
+          <Card title="Geographic Location" icon={<FiMapPin />} className="md:col-span-1">
             <Row label="Country" value={s(country)} />
             <Row label="State" value={s(state)} />
             <Row label="District" value={s(district)} />
@@ -272,92 +294,82 @@ export default function ViewParty() {
             <Row label="Postal Code" value={s(postalCode)} mono />
           </Card>
 
-          {/* Address */}
-          <Card title="Address" icon={<FiHome />} className="md:col-span-1">
-            <div className="rounded-lg border border-slate-200 bg-white/80 p-3 text-sm text-slate-800">
+          {/* Full Address (Card 6) */}
+          <Card title="Full Address" icon={<FiHome />} className="md:col-span-2 lg:col-span-1">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-sm text-slate-800 whitespace-pre-wrap">
               {address || "—"}
             </div>
           </Card>
         </div>
 
-        {/* Documents */}
-        <div className="p-6">
-          <div className="rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-            <div className="mb-3 flex items-center gap-2 text-slate-500">
-              <FiFileText />
-              <h3 className="text-xs font-semibold uppercase tracking-wide">Documents</h3>
-            </div>
-
+        {/* Documents Table (Enhanced Document View) */}
+        <div className="p-6 pt-0">
+          <Card title="Uploaded Files" icon={<FiFileText />} className="w-full">
             {Array.isArray(documents) && documents.length ? (
-              <ul className="grid gap-3 md:grid-cols-2">
-                {documents.map((url, i) => {
-                  const ext = (url.split(".").pop() || "").toUpperCase();
-                  return (
-                    <li key={i} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-600">
-                          <FiFileText />
-                        </div>
-                        <div className="leading-tight">
-                          <div className="font-medium text-slate-800">Document {i + 1}</div>
-                          <div className="text-xs text-slate-500 break-all">{url}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Pill tone="blue">{ext || "FILE"}</Pill>
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
-                        >
-                          <FiDownload /> Open
-                        </a>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+                        File
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+                        URL / Path
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">
+                        Type
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {documents.map((url, i) => {
+                      const filename = url.split("/").pop() || `Document ${i + 1}`;
+                      const ext = (url.split(".").pop() || "").toUpperCase();
+
+                      return (
+                        <tr key={i} className="hover:bg-slate-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-slate-900">
+                              {`Document ${i + 1}`}
+                            </div>
+                            <div className="text-xs text-slate-500">{filename}</div>
+                          </td>
+                          <td className="px-6 py-4 break-all text-xs text-slate-600 max-w-xs">
+                            {url}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right">
+                            <Pill tone="blue">{ext || "FILE"}</Pill>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-md bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 transition"
+                            >
+                              <FiDownload /> Open
+                            </a>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500">
-                No documents uploaded.
+                <FiFileText className="mx-auto h-6 w-6 mb-2" />
+                No documents uploaded for this party.
               </div>
             )}
-          </div>
+          </Card>
         </div>
-
       </div>
 
-      {/* Edit Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white p-6 shadow-lg">
-            <button
-              onClick={() => setShowEditModal(false)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
-            >
-              ✕
-            </button>
-            <EditParties
-              partyId={id}
-              onClose={() => setShowEditModal(false)}
-              onSuccess={() => {
-                setShowEditModal(false);
-                // Refresh party data
-                (async () => {
-                  try {
-                    const res = await getPartyByIdFlexible(id);
-                    const obj = res?.data ?? res;
-                    setParty(obj || null);
-                  } catch (e) {
-                    console.error("Failed to refresh party data:", e);
-                  }
-                })();
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* Removed: Edit Modal JSX */}
     </section>
   );
 }

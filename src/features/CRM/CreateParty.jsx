@@ -233,13 +233,13 @@ export default function CreateParty({
   /* forms */
   const initSender = React.useMemo(() => ({
     role: "sender",
-    name: "", contactNumber: "", whatsappNumber: "", // Added whatsappNumber here
+    name: "", contactNumber: "", whatsappNumber: "", useSameForWhatsapp: true,
     senderIdType: "", senderId: "", documents: [],
   }), []);
   const initReceiver = React.useMemo(() => ({
     role: "receiver",
     name: "", whatsappNumber: "", useSameForContact: true,
-    contactNumber: "",
+    contactNumber: "", useSameForWhatsapp: true,
     receiverIdType: "", receiverId: "", documents: [],
     country: "", state: "", district: "", city: "", zipCode: "", address: "",
   }), []);
@@ -381,10 +381,31 @@ export default function CreateParty({
     }
   }, [role, receiver.country, phoneCodes]);
 
+  // Set default document type to "IQAMA" when docTypes are loaded
+  useEffect(() => {
+    if (docTypes.length > 0) {
+      const iqamaDoc = docTypes.find(
+        (doc) => doc.document_name?.toLowerCase() === "iqama"
+      );
+      if (iqamaDoc) {
+        const iqamaId = getDocId(iqamaDoc);
+        setSender((prev) => ({ ...prev, senderIdType: iqamaId }));
+        setReceiver((prev) => ({ ...prev, receiverIdType: iqamaId }));
+      }
+    }
+  }, [docTypes]);
   /* handlers */
   const onSenderChange = async (e) => {
     const { name, value, files } = e.target;
+    const { type, checked } = e.target;
 
+    if (name === "useSameForWhatsapp") {
+      return setSender((p) => {
+        const next = { ...p, useSameForWhatsapp: checked };
+        if (checked) next.whatsappNumber = p.contactNumber;
+        return next;
+      });
+    }
     if (name === "contactNumber" || name === "whatsappNumber") {
       return setSender((p) => ({ ...p, [name]: value }));
     }
@@ -397,6 +418,14 @@ export default function CreateParty({
     setSender((p) => ({ ...p, [name]: value }));
   };
 
+  // Keep sender whatsapp mirrored when checkbox is ON
+  React.useEffect(() => {
+    if (sender.useSameForWhatsapp) {
+      setSender((p) => ({ ...p, whatsappNumber: p.contactNumber }));
+      setWhatsappCode(contactCode);
+    }
+  }, [sender.useSameForWhatsapp, sender.contactNumber, contactCode]);
+
   const onReceiverChange = async (e) => {
     const { name, value, type, checked, files } = e.target;
 
@@ -404,6 +433,14 @@ export default function CreateParty({
       return setReceiver((p) => {
         const next = { ...p, useSameForContact: checked };
         if (checked) next.contactNumber = p.whatsappNumber;
+        return next;
+      });
+    }
+
+    if (name === "useSameForWhatsapp") {
+      return setReceiver((p) => {
+        const next = { ...p, useSameForWhatsapp: checked };
+        if (checked) next.whatsappNumber = p.contactNumber;
         return next;
       });
     }
@@ -432,6 +469,14 @@ export default function CreateParty({
 
     setReceiver((p) => ({ ...p, [name]: type === "checkbox" ? checked : value }));
   };
+
+  // Keep receiver whatsapp mirrored when checkbox is ON
+  React.useEffect(() => {
+    if (receiver.useSameForWhatsapp) {
+      setReceiver((p) => ({ ...p, whatsappNumber: p.contactNumber }));
+      setWhatsappCode(contactCode);
+    }
+  }, [receiver.useSameForWhatsapp, receiver.contactNumber, contactCode]);
 
   /* payloads */
   const buildSenderPayload = () => {
@@ -668,9 +713,9 @@ export default function CreateParty({
                         ) : (
                             <select
                                 value={whatsappCode}
-                                onChange={(e) => setWhatsappCode(e.target.value)}
+                                onChange={(e) => !sender.useSameForWhatsapp && setWhatsappCode(e.target.value)}
                                 className={`${fieldBase} ${fieldDisabled}`}
-                                disabled={phoneCodesLoading}
+                                disabled={phoneCodesLoading || sender.useSameForWhatsapp}
                             >
                                 {/* Use displayDialCode to remove '+' */}
                                 {allDialCodes.map((c) => (
@@ -683,12 +728,25 @@ export default function CreateParty({
                             inputMode="tel"
                             autoComplete="tel"
                             name="whatsappNumber"
-                            value={sender.whatsappNumber ?? ""}
+                            value={(sender.useSameForWhatsapp ? sender.contactNumber : sender.whatsappNumber) ?? ""}
                             onChange={onSenderChange}
                             className={fieldBase}
                             placeholder="e.g., 5XXXXXXXX"
+                            readOnly={sender.useSameForWhatsapp}
                         />
                         </div>
+                        <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            name="useSameForWhatsapp"
+                            checked={sender.useSameForWhatsapp}
+                            onChange={onSenderChange}
+                          />
+                          Use same as Contact Number
+                        </label>
+                        {sender.useSameForWhatsapp && (
+                          <p className="mt-1 text-xs text-slate-500">Mirrors Contact number</p>
+                        )}
                     </div>
                 </div>
 
@@ -898,6 +956,17 @@ export default function CreateParty({
                         readOnly={receiver.useSameForContact}
                       />
                     </div>
+                    <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        name="useSameForWhatsapp"
+                        checked={receiver.useSameForWhatsapp}
+                        onChange={onReceiverChange}
+                      />
+                      Use same as Contact Number
+                    </label>
+                    <div className="grid grid-cols-[120px,1fr] gap-2">
+                    </div>
                     {receiver.useSameForContact && (
                       <p className="mt-1 text-xs text-slate-500">Mirrors WhatsApp number</p>
                     )}
@@ -946,7 +1015,13 @@ export default function CreateParty({
 
       {/* success modal */}
       <ErrorBoundary onClose={() => setShowSuccess(false)}>
-        <CreateReceiverSenderModal open={showSuccess} onClose={() => setShowSuccess(false)} data={createdData} details={displayDetails} />
+        <CreateReceiverSenderModal
+          open={showSuccess}
+          onClose={() => {
+            setShowSuccess(false);
+            resetForm();
+          }}
+          data={createdData} details={displayDetails} />
       </ErrorBoundary>
     </div>
   );

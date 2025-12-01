@@ -58,20 +58,24 @@ export default function AllBranches() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteInput, setDeleteInput] = useState("");
 
-  // Updated loadPage to use getBranches from coreService
-  async function loadPage({ pageArg = page, perPageArg = rowsPerPage } = {}) {
-    setLoading(true);
-    setErr("");
-    try {
-      // getBranches handles pagination automatically if backend supports it
-      const result = await getBranches({ page: pageArg, per_page: perPageArg });
+/* In AllBranches.jsx */
+
+async function loadPage({ pageArg = page, perPageArg = rowsPerPage } = {}) {
+  setLoading(true);
+  setErr("");
+  try {
+    const result = await getBranches({ page: pageArg, per_page: perPageArg });
+    
+    if (result.items && result.meta) {
+      // 1. Valid Server-side pagination
+      setBranches(result.items);
+      setMeta(result.meta);
+    } else if (Array.isArray(result)) {
+      // 2. Array Response Logic
       
-      if (result.items && result.meta) {
-        // Paged response
-        setBranches(result.items);
-        setMeta(result.meta);
-      } else if (Array.isArray(result)) {
-        // Full list response (fallback logic)
+      // FIX: Only slice client-side if the result is larger than the page size.
+      // If result.length <= perPageArg, assume backend already returned just the specific page.
+      if (result.length > perPageArg) {
         const start = (pageArg - 1) * perPageArg;
         const pageItems = result.slice(start, start + perPageArg);
         setBranches(pageItems);
@@ -82,15 +86,28 @@ export default function AllBranches() {
           last_page: Math.max(1, Math.ceil(result.length / perPageArg)),
         });
       } else {
-        setBranches([]);
+        // Assume backend handled pagination but returned raw array (no meta)
+        setBranches(result);
+        
+        // We have to guess the meta here because the backend didn't give it to us
+        setMeta({
+          current_page: pageArg,
+          per_page: perPageArg,
+          // If we got a full page, assume there might be more. If less, we are at the end.
+          total: result.length === perPageArg ? (pageArg + 1) * perPageArg : pageArg * perPageArg, 
+          last_page: result.length < perPageArg ? pageArg : pageArg + 1,
+        });
       }
-    } catch (e) {
-      setErr(e?.message || "Failed to load branches");
+    } else {
       setBranches([]);
-    } finally {
-      setLoading(false);
     }
+  } catch (e) {
+    setErr(e?.message || "Failed to load branches");
+    setBranches([]);
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     loadPage({ pageArg: page, perPageArg: rowsPerPage });
@@ -175,7 +192,7 @@ export default function AllBranches() {
         </div>
       )}
 
-      <div className="w-full max-w-7xl bg-white rounded-2xl shadow-sm">
+      <div className="w-full bg-white rounded-2xl shadow-sm">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>

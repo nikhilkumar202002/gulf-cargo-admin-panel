@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FiArrowLeft } from "react-icons/fi";
 import toast from "react-hot-toast";
-import api from "../../api/axiosInstance";
+
+// Ensure this path matches your project structure
+import { getBranchById, updateBranch } from "../../../services/coreService";
 
 /* ---------------- Skeleton chip ---------------- */
 const Skel = ({ w = 120, h = 14, r = 8, className = "" }) => (
@@ -44,22 +46,12 @@ const StatusToggle = ({ value, onChange, disabled }) => {
 /* -------------- helpers -------------- */
 const onlyDigits = (s = "") => (s || "").replace(/\D+/g, "");
 
-const unwrapBranch = (res) =>
-  res?.data?.branch ?? res?.data?.data ?? res?.data ?? null;
-
-const coerceStatus = (s) => {
-  if (s === 1 || s === "1" || s === true || s === "Active") return 1;
+// FIX: Improved status detector
+const detectStatus = (val) => {
+  if (val === 1 || val === "1" || val === true) return 1;
+  if (String(val || "").toLowerCase() === "active") return 1;
   return 0;
 };
-
-const getReturnedLogoUrl = (res) =>
-  res?.data?.branch?.logo_url ??
-  res?.data?.data?.logo_url ??
-  res?.data?.logo_url ??
-  res?.data?.branch?.logo ??
-  res?.data?.data?.logo ??
-  res?.data?.logo ??
-  "";
 
 const getFirstErrorMessage = (e) => {
   const msg = e?.response?.data?.message || e?.message;
@@ -73,7 +65,7 @@ const getFirstErrorMessage = (e) => {
 
 const emptyBranch = {
   branch_name: "",
-  branch_name_ar: "", // REQUIRED by backend
+  branch_name_ar: "",
   branch_code: "",
   branch_contact_number: "",
   branch_alternative_number: "",
@@ -83,8 +75,7 @@ const emptyBranch = {
   branch_address: "",
   status: 1,
   logo_url: "",
-  // NEW
-  start_number: "", // exactly 6 digits
+  start_number: "",
 };
 
 const MAX_LOGO_MB = 2;
@@ -105,29 +96,21 @@ const EditBranch = () => {
   const [logoPreview, setLogoPreview] = useState("");
   const [logoRemoved, setLogoRemoved] = useState(false);
 
-  // strict mode guard
-  const fetchedRef = useRef(false);
-
   useEffect(() => {
-    let aborted = false;
-    const ctrl = new AbortController();
+    let active = true;
+    setLoading(true);
 
     const fetchBranch = async () => {
       try {
-        setLoading(true);
         setErr("");
-        const res = await api.get(`/branch/${id}`, { signal: ctrl.signal });
-        const b = unwrapBranch(res);
+        
+        // 1. Fetch
+        const b = await getBranchById(id);
+        
+        if (!active) return;
         if (!b) throw new Error("Branch details not found.");
 
-        // tolerate different API keys for start number
-        const startNo =
-          b.start_number ??
-          b.invoice_start_number ??
-          b.invoice_start ??
-          b.startNo ??
-          "";
-
+        // 2. Normalize
         const normalized = {
           branch_name: b.branch_name || "",
           branch_name_ar: b.branch_name_ar || "",
@@ -138,38 +121,35 @@ const EditBranch = () => {
           branch_location: b.branch_location || "",
           branch_website: b.branch_website || "",
           branch_address: b.branch_address || "",
-          status: coerceStatus(b.status),
-          logo_url: b.logo_url || b.logo || "",
-          start_number: onlyDigits(String(startNo)).slice(0, 6) || "",
+          // FIX: Use the smart status detector
+          status: detectStatus(b.status),
+          logo_url: b.logo_url || "",
+          start_number: onlyDigits(String(b.start_number || "")).slice(0, 6),
         };
 
-        if (!aborted) {
-          setBranch(normalized);
-          setInitial(normalized);
-          setLogoPreview(normalized.logo_url || "");
-          setLogoFile(null);
-          setLogoRemoved(false);
-        }
+        setBranch(normalized);
+        setInitial(normalized);
+        setLogoPreview(normalized.logo_url || "");
+        setLogoFile(null);
+        setLogoRemoved(false);
       } catch (e) {
-        if (aborted || e?.name === "CanceledError") return;
+        if (!active) return;
         const msg = getFirstErrorMessage(e);
         setErr(msg);
         toast.error(msg);
       } finally {
-        if (!aborted) setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
+    if (id) {
       fetchBranch();
     } else {
-      fetchBranch();
+      setLoading(false);
     }
 
-    return () => {
-      aborted = true;
-      ctrl.abort();
+    return () => { 
+      active = false; 
     };
   }, [id]);
 
@@ -187,11 +167,10 @@ const EditBranch = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === "status") {
-      setField(name, coerceStatus(value));
+      setField(name, Number(value));
     } else if (name === "branch_code") {
       setField(name, value.toUpperCase());
     } else if (name === "start_number") {
-      // digits only, clamp to 6
       setField(name, onlyDigits(value).slice(0, 6));
     } else {
       setField(name, value);
@@ -202,19 +181,12 @@ const EditBranch = () => {
     if (!branch.branch_name.trim()) return "Branch name is required.";
     if (!branch.branch_name_ar.trim()) return "Branch name (Arabic) is required.";
     if (!branch.branch_code.trim()) return "Branch code is required.";
-    if (
-      branch.branch_email &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(branch.branch_email)
-    ) {
+    if (branch.branch_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(branch.branch_email)) {
       return "Please enter a valid email address.";
     }
-    if (
-      branch.branch_website &&
-      !/^https?:\/\/[^\s.]+\.[^\s]{2,}/i.test(branch.branch_website.trim())
-    ) {
+    if (branch.branch_website && !/^https?:\/\/[^\s.]+\.[^\s]{2,}/i.test(branch.branch_website.trim())) {
       return "Website should start with http:// or https://";
     }
-    // NEW: enforce exactly 6 digits
     if (!/^\d{6}$/.test(branch.start_number)) {
       return "Invoice starting number must be exactly 6 digits.";
     }
@@ -231,9 +203,9 @@ const EditBranch = () => {
     setErr("");
     setSaving(true);
 
-    const payload = {
+    const basePayload = {
       branch_name: branch.branch_name.trim(),
-      branch_name_ar: branch.branch_name_ar.trim(), // REQUIRED
+      branch_name_ar: branch.branch_name_ar.trim(),
       branch_code: branch.branch_code.trim(),
       branch_contact_number: branch.branch_contact_number.trim(),
       branch_alternative_number: branch.branch_alternative_number.trim(),
@@ -242,49 +214,38 @@ const EditBranch = () => {
       branch_website: branch.branch_website.trim(),
       branch_address: branch.branch_address.trim(),
       status: Number(branch.status),
-      // NEW
-      start_number: branch.start_number, // 6-digit string
+      start_number: branch.start_number,
     };
 
     const needsMultipart = !!logoFile || logoRemoved;
 
     try {
-      let res;
-      if (!needsMultipart) {
-        // JSON POST
-        res = await toast.promise(
-          api.post(`/branch/${id}`, payload),
-          {
-            loading: "Updating branch…",
-            success: "Branch updated successfully.",
-            error: (e) => getFirstErrorMessage(e),
-          },
-          { success: { duration: 1800 } }
-        );
+      let finalPayload;
+      
+      if (needsMultipart) {
+        finalPayload = new FormData();
+        Object.entries(basePayload).forEach(([k, v]) => finalPayload.append(k, v ?? ""));
+        if (logoFile) finalPayload.append("logo", logoFile);
+        if (logoRemoved && !logoFile) finalPayload.append("logo_remove", "1");
+        finalPayload.append("_method", "PUT");
       } else {
-        // multipart POST
-        const fd = new FormData();
-        Object.entries(payload).forEach(([k, v]) => fd.append(k, v ?? ""));
-        if (logoFile) fd.append("logo", logoFile);
-        if (logoRemoved && !logoFile) fd.append("logo_remove", "1");
-
-        res = await toast.promise(
-          api.post(`/branch/${id}`, fd, {
-            headers: { "Content-Type": "multipart/form-data" },
-          }),
-          {
-            loading: logoFile ? "Uploading logo…" : "Updating…",
-            success: "Branch updated successfully.",
-            error: (e) => getFirstErrorMessage(e),
-          },
-          { success: { duration: 1800 } }
-        );
+        finalPayload = basePayload;
       }
 
-      const returnedLogo = getReturnedLogoUrl(res);
+      const res = await toast.promise(
+        updateBranch(id, finalPayload),
+        {
+          loading: logoFile ? "Uploading & Updating..." : "Updating branch...",
+          success: "Branch updated successfully.",
+          error: (e) => getFirstErrorMessage(e),
+        },
+        { success: { duration: 1800 } }
+      );
+
+      const returnedLogo = res?.logo_url || res?.data?.logo_url || "";
       const nextLogoUrl = logoRemoved ? "" : (returnedLogo || branch.logo_url || initial.logo_url);
 
-      const nextInitial = { ...payload, logo_url: nextLogoUrl };
+      const nextInitial = { ...basePayload, logo_url: nextLogoUrl };
       setInitial(nextInitial);
       setBranch(nextInitial);
       setLogoPreview(nextLogoUrl);
@@ -292,6 +253,8 @@ const EditBranch = () => {
       setLogoRemoved(false);
 
       if (goBackAfter) navigate("/branches");
+    } catch (e) {
+      console.error(e);
     } finally {
       setSaving(false);
     }
@@ -347,7 +310,6 @@ const EditBranch = () => {
     setLogoRemoved(true);
   };
 
-  // drag & drop on dropzone
   const onDrop = async (ev) => {
     ev.preventDefault();
     const f = ev.dataTransfer?.files?.[0];
@@ -384,11 +346,6 @@ const EditBranch = () => {
               <Skel w={96} />
               <div className="mt-2"><Skel w="100%" h={96} r={12} /></div>
             </div>
-            <div className="md:col-span-2 flex items-center justify-end gap-3 mt-2">
-              <Skel w={110} h={42} r={10} />
-              <Skel w={150} h={42} r={10} />
-              <Skel w={150} h={42} r={10} />
-            </div>
           </div>
         </div>
       </div>
@@ -396,8 +353,8 @@ const EditBranch = () => {
   }
 
   return (
-    <div className="flex justify-center py-10 px-4">
-      <div className="w-full max-w-5xl bg-white shadow-lg rounded-2xl p-8">
+    <div className="flex justify-center">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between border-b pb-4 mb-6">
           <div className="space-y-1">
@@ -425,7 +382,7 @@ const EditBranch = () => {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!saving) doSave(true); // Save & Back
+            if (!saving) doSave(true); 
           }}
           className="space-y-8"
         >
@@ -521,10 +478,6 @@ const EditBranch = () => {
                         Remove
                       </button>
                     )}
-
-                    <p className="text-xs text-slate-500 w-full">
-                      Drag & drop or click to choose. PNG/JPG/WebP, up to {MAX_LOGO_MB} MB.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -576,7 +529,7 @@ const EditBranch = () => {
                 />
               </label>
 
-              {/* NEW: Start Number (six digits) */}
+              {/* Start Number */}
               <label className="block">
                 <span className="block text-sm font-medium text-slate-700">Invoice starting (6 digits)</span>
                 <input
@@ -589,12 +542,8 @@ const EditBranch = () => {
                   maxLength={6}
                   placeholder="e.g., 100001"
                   className="mt-1 w-full border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  aria-describedby="start-number-help"
                   required
                 />
-                <span id="start-number-help" className="text-xs text-slate-500">
-                  Exactly 6 digits. Only numbers allowed.
-                </span>
               </label>
 
               {/* Location */}
@@ -673,12 +622,10 @@ const EditBranch = () => {
               Cancel
             </button>
 
-            {/* Save & Back */}
             <button
               type="submit"
               className="bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-2.5 rounded-lg shadow transition disabled:opacity-60"
               disabled={saving || !dirty}
-              title={!dirty ? "No changes to save" : ""}
             >
               {saving ? "Saving…" : "Save & Back"}
             </button>
@@ -686,7 +633,6 @@ const EditBranch = () => {
         </form>
       </div>
 
-      {/* skeleton css */}
       <style>{`
         .skel { background:#e5e7eb; position:relative; overflow:hidden; }
         .skel::after { content:""; position:absolute; inset:0; transform:translateX(-100%);

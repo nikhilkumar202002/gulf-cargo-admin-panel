@@ -206,20 +206,7 @@ export default function CreateReceiverSenderModal({ open, onClose, data, details
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={copySummary}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    {copied ? <ClipboardCheck className="h-4 w-4 text-emerald-600" /> : <Clipboard className="h-4 w-4" />}
-                    {copied ? "Copied" : "Copy summary"}
-                  </button>
-            
-                  <button
-                    onClick={printView}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <Printer className="h-4 w-4" /> Print
-                  </button>
+             
                   <button
                     ref={closeBtnRef}
                     onClick={onClose}

@@ -43,6 +43,12 @@ export const getParties = async (params = {}) => {
   return unwrap(res);
 };
 
+
+export const deleteParty = async (id) => {
+  const { data } = await api.delete(`/party/${id}`);
+  return data;
+};
+
 /**
  * Get parties filtered by type (1=Sender, 2=Receiver)
  * OPTIMIZED: Tries server-side filtering first for speed.

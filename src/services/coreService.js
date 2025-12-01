@@ -64,12 +64,16 @@ export const getActiveRoles = getRoles;
    BRANCHES (CRUD)
    ========================================================================== */
 
-export const getBranches = async (params = {}) => {
+/* In coreService.js */
 
+export const getBranches = async (params = {}) => {
   try {
     const res = await api.get("/branches", { params });
     const raw = unwrap(res);
 
+    // --- FIX STARTS HERE ---
+    
+    // Scenario 1: Standard Laravel Pagination (Root level)
     if (raw?.current_page && Array.isArray(raw.data)) {
       return {
         items: raw.data.map(normalizeBranch),
@@ -81,13 +85,33 @@ export const getBranches = async (params = {}) => {
         },
       };
     }
+
+    // Scenario 2: Nested Meta Pagination (Common in API Resources)
+    // Checks if raw.meta exists or raw.data.meta exists
+    const metaSource = raw?.meta || raw?.data?.meta;
+    const dataSource = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw?.data?.items) ? raw.data.items : null);
+
+    if (metaSource?.current_page && dataSource) {
+       return {
+        items: dataSource.map(normalizeBranch),
+        meta: {
+          current_page: metaSource.current_page,
+          last_page: metaSource.last_page,
+          total: metaSource.total,
+          per_page: metaSource.per_page,
+        },
+      };
+    }
+    // --- FIX ENDS HERE ---
+
+    // Fallback: return plain list
     return normalizeList(raw).map(normalizeBranch);
   } catch (e) {
+    // Keep existing fallback logic
     const res = await api.get("/branch", { params });
     return normalizeList(res).map(normalizeBranch);
   }
 };
-
 export const getActiveBranches = async (params = {}) => {
   // Some backends have a dedicated fast endpoint
   try {
@@ -331,4 +355,174 @@ export const createDocumentType = async (payload) => {
   return unwrap(res);
 };
 
+export const getShipmentCounts = async () => {
+  try {
+    const { data } = await api.get("/shipments-counts");
+    if (data?.success) {
+      return {
+        software: data.software_count || 0,
+        physical: data.physical_count || 0,
+        total: data.total_count || 0,
+      };
+    }
+    return { software: 0, physical: 0, total: 0 };
+  } catch (err) {
+    console.error("Error fetching shipment counts:", err);
+    return { software: 0, physical: 0, total: 0 };
+  }
+};
 
+// --- User Count By Role ---
+export const getUserCountByRole = async (roleId) => {
+  try {
+    const { data } = await api.get(`/user-counts?role_id=${roleId}`);
+    return data?.count || 0;
+  } catch (err) {
+    console.error(`Error fetching user count for role ${roleId}:`, err);
+    return 0;
+  }
+};
+
+// --- Sender Count ---
+export const getSenderCount = async () => {
+  try {
+    const { data } = await api.get("/parties/count/customer-type/1");
+    return data?.count || 0;
+  } catch (err) {
+    console.error("Error fetching sender count:", err);
+    return 0;
+  }
+};
+
+// --- Receiver Count ---
+export const getReceiverCount = async () => {
+  try {
+    const { data } = await api.get("/parties/count/customer-type/2");
+    return data?.count || 0;
+  } catch (err) {
+    console.error("Error fetching receiver count:", err);
+    return 0;
+  }
+};
+
+// --- Branch Count ---
+export const getBranchCount = async () => {
+  try {
+    const { data } = await api.get("/branches-counts");
+    return data?.total_count || 0;
+  } catch (err) {
+    console.error("Error fetching branch count:", err);
+    return 0;
+  }
+};
+
+// --- Active Users Count (Live/Concurrent users) ---
+export const getActiveUsersCount = async () => {
+  try {
+    const { data } = await api.get("/active-users");
+    return data?.count || 0;
+  } catch (err) {
+    console.error("Error fetching active users count:", err);
+    return 0;
+  }
+};
+
+// --- Shipment Counts By Status ---
+export const getShipmentCountsByStatus = async () => {
+  try {
+    const { data } = await api.get("/shipments/count/status");
+    if (!data?.success) {
+      return { outForDelivery: 0, enquiriesCollected: 0, waitingForClearance: 0 };
+    }
+
+    const findCount = (arr = [], statusId) => {
+      const item = arr.find((s) => String(s.status_id) === String(statusId));
+      return item ? Number(item.count) || 0 : 0;
+    };
+
+    const cargo = data.cargo_shipments?.status_breakdown || [];
+    const physical = data.physical_shipments?.status_breakdown || [];
+
+    return {
+      outForDelivery: findCount(cargo, 9) + findCount(physical, 9),
+      enquiriesCollected: findCount(cargo, 13) + findCount(physical, 13),
+      waitingForClearance: findCount(cargo, 5) + findCount(physical, 5),
+    };
+  } catch (err) {
+    console.error("Error fetching shipment breakdown:", err);
+    return { outForDelivery: 0, enquiriesCollected: 0, waitingForClearance: 0 };
+  }
+};
+
+// --- All Dashboard Counters Combined ---
+export const getAllDashboardCounts = async () => {
+  try {
+    const [
+      shipments,
+      staffCount,
+      senderCount,
+      receiverCount,
+      branchCount,
+      statusCounts,
+    ] = await Promise.all([
+      getShipmentCounts(),
+      getUserCountByRole(2), // Staff
+      getSenderCount(),
+      getReceiverCount(),
+      getBranchCount(),
+      getShipmentCountsByStatus(),
+    ]);
+
+    return {
+      software: shipments.software,
+      physical: shipments.physical,
+      totalShipments: shipments.total,
+      staff: staffCount,
+      senders: senderCount,
+      receivers: receiverCount,
+      branches: branchCount,
+      outForDelivery: statusCounts.outForDelivery,
+      enquiriesCollected: statusCounts.enquiriesCollected,
+      waitingForClearance: statusCounts.waitingForClearance,
+    };
+  } catch (err) {
+    console.error("Error fetching all dashboard counters:", err);
+    return {
+      software: 0,
+      physical: 0,
+      totalShipments: 0,
+      staff: 0,
+      senders: 0,
+      receivers: 0,
+      branches: 0,
+      outForDelivery: 0,
+      enquiriesCollected: 0,
+      waitingForClearance: 0,
+    };
+  }
+};
+
+// --- UI Mapping for Dashboard Widgets ---
+export const getCounters = async () => {
+  const [counts, activeUsers] = await Promise.all([
+    getAllDashboardCounts(),
+    getActiveUsersCount(),
+  ]);
+
+  return {
+    totalStaff: counts.staff,
+    totalBranches: counts.branches,
+    totalConsignees: counts.senders,
+    totalReceivers: counts.receivers,
+    softwareShipmentsToday: counts.software,
+    physicalShipmentsToday: counts.physical,
+    outForDelivery: counts.outForDelivery,
+    enquiriesCollected: counts.enquiriesCollected,
+    waitingForClearance: counts.waitingForClearance,
+    activeUsers: activeUsers,
+    staffPresent: 0,
+    staffAbsent: 0,
+    staffPartial: 0,
+    movingPending: 0,
+  };
+};getBranches

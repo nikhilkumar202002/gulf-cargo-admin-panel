@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { getBranchByIdSmart } from "../../api/branchApi";
-import Avatar from "../../components/Avatar";
+// --- CORRECT IMPORT ---
+import { getBranchById } from "../../../services/coreService";
+import Avatar from "../../../components/Avatar";
 import { FiArrowLeft } from "react-icons/fi";
 import { FaExternalLinkAlt, FaGlobe, FaMapMarkerAlt, FaPhoneAlt } from "react-icons/fa";
-import "../styles.css";
+import "../../Styles/Styles.css";
 import "./BranchStyles.css";
 
 /* ---------------- helpers ---------------- */
@@ -27,59 +28,6 @@ const isActiveStatus = (v) => {
   return false;
 };
 
-/* ---------------- start_number finder (tolerant + deep) ---------------- */
-const digitStr = (v) => String(v ?? "").replace(/\D+/g, "");
-
-/** Recursively search for a 6-digit-ish start number across nested objects */
-const findStartNumberDeep = (obj, depth = 0) => {
-  if (!obj || typeof obj !== "object" || depth > 4) return "";
-
-  // 1) explicit favorites first
-  const explicitPaths = [
-    "start_number",
-    "startNumber",
-    "invoice_start_number",
-    "invoiceStartNumber",
-    "invoice_start",
-    "invoiceStart",
-    "startNo",
-    "start_no",
-  ];
-  for (const k of explicitPaths) {
-    if (k in obj) {
-      const ds = digitStr(obj[k]);
-      if (ds) return ds.slice(0, 6);
-    }
-  }
-
-  // 2) common containers
-  const containers = ["invoice", "invoices", "settings", "meta", "data", "attributes"];
-  for (const c of containers) {
-    if (obj[c]) {
-      const ds = findStartNumberDeep(obj[c], depth + 1);
-      if (ds) return ds;
-    }
-  }
-
-  // 3) heuristic on keys
-  for (const [k, v] of Object.entries(obj)) {
-    if (typeof v === "object" && v) {
-      const ds = findStartNumberDeep(v, depth + 1);
-      if (ds) return ds;
-    } else {
-      if (/(start).*(invoice|number)|(invoice).*(start)/i.test(k)) {
-        const ds = digitStr(v);
-        if (ds) return ds.slice(0, 6);
-      }
-    }
-  }
-  return "";
-};
-
-const pickStartNumber = (b) => {
-  return findStartNumberDeep(b) || "";
-};
-
 export default function ViewBranch() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -93,7 +41,8 @@ export default function ViewBranch() {
       try {
         setLoading(true);
         setError("");
-        const b = await getBranchByIdSmart(id);
+        // coreService normalizes the data structure for us
+        const b = await getBranchById(id);
         if (alive) setBranch(b);
       } catch (e) {
         if (alive) {
@@ -114,7 +63,8 @@ export default function ViewBranch() {
   }, [id]);
 
   const isActive = isActiveStatus(branch?.status);
-  const startNumber = pickStartNumber(branch);
+  // Service guarantees 'start_number' exists in the object, even if empty
+  const startNumber = branch?.start_number || "";
 
   return (
     <section className="vb-wrap">
@@ -225,7 +175,7 @@ export default function ViewBranch() {
               k="Email"
               v={loading ? <Skel w="60%" /> : branch?.branch_email || "—"}
             />
-            {/* NEW: Start Number */}
+            {/* Start Number */}
             <KV
               k="Invoice starting (6 digits)"
               v={loading ? <Skel w="30%" /> : startNumber || "—"}
@@ -261,10 +211,6 @@ export default function ViewBranch() {
           <div className="vb-block">
             <h4 className="vb-title">Created By</h4>
             <KV k="Name" v={loading ? <Skel w="40%" /> : branch?.created_by || "—"} />
-            <KV
-              k="Email"
-              v={loading ? <Skel w="60%" /> : branch?.created_by_email || "—"}
-            />
           </div>
         </div>
       </div>
