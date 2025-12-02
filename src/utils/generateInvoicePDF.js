@@ -10,7 +10,7 @@ function waitForImagesToLoad(container) {
             resolve();
           } else {
             img.onload = () => resolve();
-            img.onerror = () => resolve(); // resolve even if image fails
+            img.onerror = () => resolve();
           }
         })
     )
@@ -25,28 +25,20 @@ export const generateInvoicePDF = async (shipment, openInNewTab = false) => {
   }
 
   await waitForImagesToLoad(element);
-
   const filename = `Invoice-${shipment?.booking_no || "document"}.pdf`;
 
   const opt = {
-    // 1. Set 10mm margins (Top, Left, Bottom, Right)
     margin: [10, 10, 10, 10],
-
-    filename: filename,
+    filename,
     image: { type: "jpeg", quality: 0.98 },
-
     html2canvas: {
       scale: 2,
-      useCORS: true, // Essential for the Logo
-      allowTaint: false, // Added to prevent tainting canvas
+      useCORS: true,
+      allowTaint: false,
       scrollY: 0,
-
-      // 2. Force the capture resolution to be standard Desktop size
-      // This prevents the design from "breaking" or stacking like mobile
       windowWidth: 1200,
       width: 1200,
     },
-
     jsPDF: {
       unit: "mm",
       format: "a4",
@@ -56,12 +48,12 @@ export const generateInvoicePDF = async (shipment, openInNewTab = false) => {
 
   try {
     if (openInNewTab) {
-      const pdfBlobUrl = await html2pdf().set(opt).from(element).outputPdf("bloburl");
-      window.open(pdfBlobUrl); // open PDF in a new tab
+      const url = await html2pdf().set(opt).from(element).outputPdf("bloburl");
+      window.open(url);
     } else {
       await html2pdf().set(opt).from(element).save();
     }
-  } catch (error) {
-    console.error("Error generating PDF:", error);
+  } catch (err) {
+    console.error("Error generating PDF:", err);
   }
 };

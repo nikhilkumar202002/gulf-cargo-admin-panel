@@ -8,9 +8,11 @@ export default function InvoiceModal({ open, onClose, shipment }) {
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+
       <div className="absolute inset-0 p-4 overflow-auto">
         <div className="mx-auto max-w-6xl bg-white rounded-2xl shadow-2xl">
-          {/* Modal header (not printed) */}
+
+          {/* HEADER – NOT PRINTED */}
           <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-white px-4 py-2 print:hidden">
             <button
               onClick={onClose}
@@ -18,12 +20,14 @@ export default function InvoiceModal({ open, onClose, shipment }) {
             >
               ✕ Close
             </button>
+
             <div className="ml-auto flex items-center gap-2">
-             <button
+              <button
                 onClick={() => {
                   if (shipment?.booking_no) {
-                    const safe = String(shipment.booking_no).replace(/[\\/:*?"<>|]/g, "-");
-                    document.title = safe; // this makes the default filename = bill no
+                    const safe = String(shipment.booking_no)
+                      .replace(/[\\/:*?"<>|]/g, "-");
+                    document.title = safe;
                   }
                   window.print();
                 }}
@@ -31,11 +35,10 @@ export default function InvoiceModal({ open, onClose, shipment }) {
               >
                 Print / Save PDF
               </button>
-
             </div>
           </div>
 
-          {/* Body: render invoice in modal mode */}
+          {/* BODY */}
           <InvoiceView shipment={shipment} modal />
         </div>
       </div>

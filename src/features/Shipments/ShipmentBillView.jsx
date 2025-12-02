@@ -3,11 +3,12 @@ import {
   getBillShipments,
   updateBillShipmentStatus, // (mapped from updateBillShipmentStatuses)
   deleteBillShipments,
-} from "../../services/billingService";
+} from "../../services/billShipmentApi";
 import { getShipmentStatuses } from "../../services/coreService";
 import { FaEye, FaEdit, FaTrash } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
+import EditShipmentModal from "./EditShipment";
 
 // --- Helpers ---
 const unwrapArray = (o) =>
@@ -81,6 +82,9 @@ export default function ShipmentBillView() {
   
   // Active filters applied to API
   const [filters, setFilters] = useState({});
+
+  const [editId, setEditId] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // --- Load Statuses on Mount ---
   useEffect(() => {
@@ -247,6 +251,18 @@ export default function ShipmentBillView() {
       console.error("Bulk delete failed:", e);
       toast.error(e?.response?.data?.message || "Bulk delete failed.");
     }
+  };
+
+  const handleEditClick = (id) => {
+    setEditId(id);
+    setIsEditModalOpen(true);
+  };
+
+  // Handler when modal saves successfully
+  const handleEditSuccess = () => {
+    refresh(); // Refreshes the list data
+    setIsEditModalOpen(false);
+    setEditId(null);
   };
 
   return (
@@ -455,7 +471,7 @@ export default function ShipmentBillView() {
                             </button>
                             <button
                                 title="Edit"
-                                onClick={() => navigate(`/billshipment/${r.id}/edit`)}
+                                onClick={() => handleEditClick(r.id)}
                                 className="p-1.5 rounded-md text-amber-600 hover:bg-amber-50 transition"
                             >
                                 <FaEdit className="w-4 h-4" />
@@ -503,6 +519,12 @@ export default function ShipmentBillView() {
           </div>
         </div>
       </div>
+      <EditShipmentModal 
+        shipmentId={editId}
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={handleEditSuccess}
+      />
     </div>
   );
 }

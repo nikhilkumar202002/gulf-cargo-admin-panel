@@ -1,39 +1,33 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getBillShipmentById } from "../../services/billShipmentApi";
-import { getPhysicalBills } from "../../services/billShipmentApi";
+import { getBillShipmentById, getPhysicalBills } from "../../services/billShipmentApi";
 import { FaArrowLeft } from "react-icons/fa";
 
-/* --- Status Mapping Helper --- */
-const formatStatus = (status) => {
-  const map = {
-    1: "Pending",
-    2: "Packed",
-    3: "Dispatched",
-    4: "In Transit",
-    5: "Arrived",
-    6: "Customs Hold",
-    7: "Released",
-    8: "Out for Delivery",
-    9: "Delivered",
-    10: "Returned",
-    11: "Cancelled",
-    16: "Delivered",
-  };
-  if (!status) return "—";
-  const key = Number(status);
-  return map[key] || status;
+/* --- Status Helpers --- */
+const statusMap = {
+  1: "Shipment received",
+  2: "Shipment booked",
+  3: "Shipment forwarded",
+  4: "Shipment arrived",
+  5: "Waiting for clearance",
+  6: "Shipment on hold",
+  7: "Shipment cleared",
+  8: "Delivery arranged",
+  9: "Shipment out for delivery",
+  10: "Not Delivered",
+  11: "Pending",
+  12: "More Tracking",
+  13: "Enquiry collected",
+  14: "Transfer",
+  15: "DELIVERED",
 };
-
-/* --- Status Color Helper --- */
+const formatStatus = (status) => statusMap[status] || status;
 const getStatusStyle = (status) => {
-  const v = String(formatStatus(status)).toLowerCase();
-  if (v.includes("deliver")) return "bg-emerald-100 text-emerald-800";
-  if (v.includes("pending") || v.includes("packed")) return "bg-amber-100 text-amber-800";
-  if (v.includes("cancel") || v.includes("return")) return "bg-rose-100 text-rose-800";
-  if (v.includes("transit") || v.includes("dispatched")) return "bg-blue-100 text-blue-800";
-  if (v.includes("customs") || v.includes("hold")) return "bg-purple-100 text-purple-800";
-  return "bg-slate-100 text-slate-700";
+  const s = formatStatus(status)?.toLowerCase();
+  if (s.includes("delivered") || s.includes("cleared")) return "bg-green-100 text-green-800 border-green-300";
+  if (s.includes("waiting") || s.includes("hold") || s.includes("not delivered")) return "bg-red-100 text-red-800 border-red-300";
+  if (s.includes("forwarded") || s.includes("arrived") || s.includes("out")) return "bg-blue-100 text-blue-800 border-blue-300";
+  return "bg-amber-100 text-amber-800 border-amber-300";
 };
 
 export default function BillshipmentSingle() {
@@ -45,161 +39,184 @@ export default function BillshipmentSingle() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  /* Pagination */
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
   useEffect(() => {
-    const fetchShipmentAndBills = async () => {
-      setLoading(true);
-      setError("");
-
+    const load = async () => {
       try {
-        // 1️⃣ Fetch shipment details
-        const shipmentRes = await getBillShipmentById(id);
-        const shipmentData = shipmentRes?.data?.data || shipmentRes?.data || shipmentRes;
-        setShipment(shipmentData);
+        setLoading(true);
 
-        // 2️⃣ Extract custom shipment IDs
-        const ids = (shipmentData?.custom_shipments || []).map((c) => c.id);
-        if (ids.length === 0) {
-          setBills([]);
-          setLoading(false);
-          return;
-        }
+        const sRes = await getBillShipmentById(id);
+        const sData = sRes?.data?.data || sRes?.data || sRes;
+        setShipment(sData);
 
-        // 3️⃣ Fetch physical bills for those IDs
-        const allBills = await getPhysicalBills({ ids: ids.join(",") });
-        setBills(allBills || []);
-      } catch (e) {
-        console.error("[UI] Failed to load shipment or bills", e);
-        setError("Failed to load shipment or bills.");
+        const attached = sData.custom_shipments || [];
+        const billIds = attached.map((i) =>
+          Number(i.bill_id || i.physical_bill_id || i.physicalbill_id || i.id)
+        );
+
+        const allBillsRes = await getPhysicalBills();
+        const allBills = Array.isArray(allBillsRes)
+          ? allBillsRes
+          : allBillsRes?.data || [];
+
+        const filtered = allBills.filter((b) => billIds.includes(Number(b.id)));
+
+        const merged = filtered.map((b) => {
+          const link = attached.find(
+            (i) =>
+              Number(i.bill_id || i.physical_bill_id || i.id) === Number(b.id)
+          );
+          return { ...b, status: link?.status || b.status };
+        });
+
+        setBills(merged);
+      } catch (err) {
+        setError("Failed to load shipment");
       } finally {
         setLoading(false);
       }
     };
 
-    if (id) fetchShipmentAndBills();
+    load();
   }, [id]);
 
-  const totalPages = Math.max(1, Math.ceil(bills.length / pageSize));
+  const totalPages = Math.ceil(bills.length / pageSize) || 1;
   const pagedBills = useMemo(() => {
     const start = (page - 1) * pageSize;
     return bills.slice(start, start + pageSize);
-  }, [bills, page]);
+  }, [page, bills]);
 
-  if (loading)
-    return <div className="p-8 text-gray-600 text-center">Loading shipment and bills...</div>;
-
-  if (error)
-    return <div className="p-8 text-red-600 text-center">{error}</div>;
-
-  if (!shipment)
-    return <div className="p-8 text-gray-500 text-center">Shipment not found.</div>;
+  if (loading) return <div className="p-10 text-center">Loading...</div>;
+  if (error) return <div className="p-10 text-center text-red-600">{error}</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-5 py-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-gray-700 hover:text-indigo-600 transition-colors"
-        >
+    <div className="w-full mx-auto space-y-5">
+
+      {/* --- TOP HIGHLIGHT PANEL --- */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-2xl shadow-xl p-8">
+
+        <button onClick={() => navigate(-1)} className="text-white/70 hover:text-white flex items-center gap-2 mb-5">
           <FaArrowLeft /> Back
         </button>
-        <h1 className="text-2xl font-semibold text-gray-800">
-          Shipment #{shipment.id}
-        </h1>
-      </div>
 
-      {/* --- Shipment Details --- */}
-      <div className="rounded-xl border bg-white shadow-sm p-5 space-y-2 text-sm">
-        <div><b>Shipment No:</b> {shipment.shipment_number || "—"}</div>
-        <div><b>AWB / Container:</b> {shipment.awb_or_container_number || "—"}</div>
-        <div><b>Origin:</b> {shipment.origin_port || "—"}</div>
-        <div><b>Destination:</b> {shipment.destination_port || "—"}</div>
-        <div><b>Shipping Method:</b> {shipment.shipping_method || "—"}</div>
-        <div><b>Branch:</b> {shipment.branch_name || "—"}</div>
-        <div><b>Status:</b> {shipment.status || "—"}</div>
-      </div>
-
-      {/* --- Physical Bills Table --- */}
-      <div className="rounded-xl border bg-white shadow-sm">
-        <div className="px-4 py-3 border-b bg-gray-50 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-700">Physical Bills</h2>
-          <div className="text-sm text-gray-600">Total: {bills.length}</div>
+        {/* Shipment Number Highlight */}
+        <div className="text-4xl font-bold mb-4 tracking-tight">
+          Shipment&nbsp; 
+          <span className="text-amber-400">
+            #{shipment.shipment_number || shipment.id}
+          </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full table-auto text-sm">
-            <thead className="bg-gray-100 text-gray-700">
-              <tr>
-                <th className="p-3 border text-left">SL No</th>
-                <th className="p-3 border text-left">Invoice No</th>
-                <th className="p-3 border text-left">Pcs</th>
-                <th className="p-3 border text-left">Weight (kg)</th>
-                <th className="p-3 border text-left">Destination</th>
-                <th className="p-3 border text-left">Shipment Method</th>
-                <th className="p-3 border text-left">Is Shipment</th>
-                <th className="p-3 border text-left">Status</th>
+        {/* Container / AWB Number */}
+        <div className="text-xl font-semibold flex gap-2 items-center">
+          <span className="px-4 py-2 bg-white/10 rounded-lg border border-white/20">
+            AWB / Container:{" "}
+            <span className="text-amber-300 font-bold">
+              {shipment.awb_or_container_number || "—"}
+            </span>
+          </span>
+
+          {/* Status */}
+          <span
+            className={`px-4 py-2 rounded-full text-sm font-bold border ml-auto ${getStatusStyle(
+              shipment.status
+            )}`}
+          >
+            {formatStatus(shipment.status)}
+          </span>
+        </div>
+      </div>
+
+      {/* --- DETAILS GRID --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-8 shadow-lg rounded-2xl border">
+        <Detail label="Origin" value={shipment.origin_port?.name || shipment.origin_port} />
+        <Detail label="Destination" value={shipment.destination_port?.name || shipment.destination_port} />
+        <Detail label="Shipping Method" value={shipment.shipping_method?.name || shipment.shipping_method} />
+        <Detail label="Branch" value={shipment.branch_name} />
+      </div>
+
+      {/* --- PHYSICAL BILLS TABLE --- */}
+      <div className="bg-white border rounded-2xl shadow-lg overflow-hidden">
+        <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+          <h2 className="text-xl font-bold text-gray-800">Physical Bills</h2>
+          <span className="px-4 py-1.5 bg-white border rounded-full text-gray-700 text-sm">
+            Total Bills: {bills.length}
+          </span>
+        </div>
+
+        <table className="min-w-full table-auto text-sm">
+          <thead className="bg-gray-100 text-gray-700 text-xs uppercase">
+            <tr>
+              <Th>SL</Th>
+              <Th>Invoice No</Th>
+              <Th>Pcs</Th>
+              <Th>Weight</Th>
+              <Th>Destination</Th>
+              <Th>Method</Th>
+              <Th>Is Shipment</Th>
+              <Th>Status</Th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y">
+            {pagedBills.map((b, i) => (
+              <tr key={i} className="hover:bg-gray-50">
+                <Td>{(page - 1) * pageSize + i + 1}</Td>
+                <Td>{b.invoice_no || b.bill_no || "—"}</Td>
+                <Td>{b.pcs || "—"}</Td>
+                <Td>{b.weight || "—"}</Td>
+                <Td>{b.destination?.name || b.destination}</Td>
+                <Td>{b.shipment_method?.name || b.shipment_method}</Td>
+                <Td>{b.is_shipment ? "Yes" : "No"}</Td>
+                <Td>
+                  <span
+                    className={`px-3 py-1 text-xs rounded-full border ${getStatusStyle(
+                      b.status
+                    )}`}
+                  >
+                    {formatStatus(b.status)}
+                  </span>
+                </Td>
               </tr>
-            </thead>
-            <tbody>
-              {pagedBills.map((bill, index) => (
-                <tr key={bill.id} className="hover:bg-gray-50">
-                  <td className="p-3 border">{(page - 1) * pageSize + index + 1}</td>
-                  <td className="p-3 border">{bill.invoice_no || "—"}</td>
-                  <td className="p-3 border">{bill.pcs || "—"}</td>
-                  <td className="p-3 border">{bill.weight || "—"}</td>
-                  <td className="p-3 border">{bill.des || "—"}</td>
-                  <td className="p-3 border">{bill.shipment_method || "—"}</td>
-                  <td className="p-3 border">{bill.is_shipment === "1" ? "Yes" : "No"}</td>
-                  <td className="p-3 border">
-                    <span
-                      className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusStyle(
-                        bill.status
-                      )}`}
-                    >
-                      {formatStatus(bill.status)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {pagedBills.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-6 text-center text-gray-500">
-                    No physical bills found for this shipment.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+
+            {pagedBills.length === 0 && (
+              <tr>
+                <td colSpan={8} className="py-8 text-center text-gray-500">
+                  No physical bills found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
 
         {/* Pagination */}
-        {bills.length > pageSize && (
-          <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50 text-sm">
-            <div>
-              Page {page} of {totalPages} · Rows: {bills.length}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="px-3 py-1 rounded border bg-white hover:bg-gray-100 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-              >
-                Prev
-              </button>
-              <button
-                className="px-3 py-1 rounded border bg-white hover:bg-gray-100 disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-              >
-                Next
-              </button>
-            </div>
+        <div className="flex justify-between items-center px-6 py-4 bg-gray-50 border-t">
+          <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+          <div className="flex gap-2">
+            <button disabled={page === 1} onClick={() => setPage(page - 1)} className="btn">
+              Prev
+            </button>
+            <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="btn">
+              Next
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
 }
+
+/* --- SMALL COMPONENTS --- */
+const Detail = ({ label, value }) => (
+  <div>
+    <div className="text-sm text-gray-500">{label}</div>
+    <div className="text-lg font-semibold text-gray-900">{value || "—"}</div>
+  </div>
+);
+
+const Th = ({ children }) => <th className="px-4 py-3 text-left">{children}</th>;
+const Td = ({ children }) => <td className="px-4 py-3">{children}</td>;

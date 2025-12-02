@@ -125,14 +125,14 @@ const PackingList = lazy(() => import("../pages/All Excels/PackingList"));
 const ListInvoicePrefix = lazy(() => import("../pages/Invoice Number/ListInvoicePrefix"));
 const ListDeliveryType = lazy(() => import("../features/Settings/Delivery Type/ListDeliveryType"));
 const InvoiceOnly = lazy(() => import("../components/InvoiceOnly"));
-const CreateBills = lazy(() => import("../pages/Bills/CreateBills"));
-const BillsViews = lazy(() => import("../pages/Bills/BillsViews"));
-const CreateShipmentBill = lazy(() => import("../pages/Bills/CreateShipmentBill"));
-const ShipmentBillView = lazy(() => import("../pages/Bills/ShipmentBillView"));
-const SingleBill = lazy(() => import("../pages/Bills/SingleBill"));
+const CreateBills = lazy(() => import("../features/Cargo/CreateBills"));
+const BillsViews = lazy(() => import("../features/Cargo/BillsViews"));
+const CreateShipmentBill = lazy(() => import("../features/Shipments/CreateShipmentBill"));
+const ShipmentBillView = lazy(() => import("../features/Shipments/ShipmentBillView"));
+const SingleBill = lazy(() => import("../features/Cargo/SingleBill"));
 const BillEdit = lazy(() => import("../pages/Bills/BillEdit"));
 
-const BillshipmentSingle = lazy(() => import("../pages/Bills/BillshipmentSingle"));
+const BillshipmentSingle = lazy(() => import("../features/Shipments/BillshipmentSingle"));
 const EditShipment = lazy(() => import("../features/Shipments/EditBillShipment"));
 
 /* ---------------- helpers ---------------- */

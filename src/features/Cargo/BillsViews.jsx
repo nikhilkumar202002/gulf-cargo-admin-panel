@@ -268,7 +268,7 @@ const handleDelete = async (id) => {
 
   /** ---------- UI ---------- */
   return (
-   <section className="mx-auto max-w-6xl px-4 sm:px-6 py-8 font-[Inter]">
+   <section className="mx-auto w-full font-[Inter]">
   <Toaster position="top-right" />
 
   {/* Header */}

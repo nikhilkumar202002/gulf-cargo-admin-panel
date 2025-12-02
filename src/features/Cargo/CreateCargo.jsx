@@ -18,7 +18,6 @@ import {
   createCargo,
   normalizeCargoToInvoice,
   getNextInvoiceNo,
-  buildCargoPayload
 } from "../../services/cargoService";
 
 import {

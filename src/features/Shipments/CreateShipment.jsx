@@ -13,7 +13,6 @@ import { getProfile } from "../../services/authService";
 import {
   listCargos,
   createCargoShipment,
-  markCargoInShipment,
   markCargoNotInShipment
 } from "../../services/cargoService";
 

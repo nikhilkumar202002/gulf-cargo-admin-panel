@@ -208,24 +208,37 @@ const extractParty = (p) => ({
   document_id: p?.document_id || "",
   tel: p?.contact_number || p?.whatsapp_number || "",
   address_line: p?.address || p?.address_line || "",
-  post: p?.post || "", // FIXED (previously used city)
+  post: p?.post || "", 
   city: p?.city || "",
   pin: p?.postal_code || p?.pincode || "",
   dist: p?.district || "",
   state: p?.state || "",
-  country: p?.country || "", // FIXED
+  country: p?.country || "", 
   address: p?.address || "",
   phones: formatPhones(p),
   raw: p,
 });
 
-const matchByName = (name, list) => {
+// --- UPDATED MATCH HELPER: CHECKS NAME AND PHONE ---
+const matchByNameAndPhone = (name, phone, list) => {
   if (!name) return null;
-  const low = name.toLowerCase();
-  const getName = (x) => (x?.name || "").toLowerCase();
+  const lowName = name.toLowerCase().trim();
+  const cleanPhone = phone ? String(phone).replace(/[^0-9]/g, "") : "";
+
+  // 1. Try finding Exact Name + Matching Phone (most accurate)
+  if (cleanPhone) {
+    const exactMatch = list.find(x => {
+        const xName = (x?.name || "").toLowerCase().trim();
+        const xPhone = String(x?.contact_number || x?.phone || x?.mobile || "").replace(/[^0-9]/g, "");
+        return xName === lowName && xPhone.includes(cleanPhone);
+    });
+    if (exactMatch) return exactMatch;
+  }
+
+  // 2. Fallback: Loose Name match (Legacy behavior)
   return (
-    list.find((x) => getName(x) === low) ||
-    list.find((x) => getName(x).includes(low)) ||
+    list.find((x) => (x?.name || "").toLowerCase() === lowName) ||
+    list.find((x) => (x?.name || "").toLowerCase().includes(lowName)) ||
     null
   );
 };
@@ -262,11 +275,29 @@ const getLoggedInUser = () => {
 };
 
 /** Try to read pieces from common fields; else sum item qty */
-const computePieces = (sh) => {
-  if (!sh) return 0;
-  // This now correctly reads the box count passed directly from the CreateCargo component.
-  const pieces = pick(sh, ["no_of_pieces"], 0);
-  return Number(pieces) || 0;
+const computePieces = (sh, boxRows, items) => {
+  if (!sh) return "—";
+
+  // 1. Try to get a top-level pieces count first
+  const topLevelPieces = pick(
+    sh,
+    ["no_of_pieces", "pieces", "total_pieces", "no_of_boxes", "box_count"],
+    null
+  );
+  if (topLevelPieces !== null && Number(topLevelPieces) > 0) {
+    return Number(topLevelPieces);
+  }
+
+  // 2. Fallback to number of calculated box rows
+  if (boxRows?.length > 0) {
+    return boxRows.length;
+  }
+
+  // 3. Fallback to summing item quantities
+  const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  if (totalQty > 0) return totalQty;
+
+  return "—";
 };
 
 /** Pick a reasonable shipment date (booking/shipment/created) */
@@ -280,9 +311,9 @@ const pickShipmentDate = (sh) => {
     sh?.date,
   ].filter(Boolean);
   const raw = candidates[0];
-  const d = raw ? new Date(raw) : new Date(); // Default to today's date
+  const d = raw ? new Date(raw) : new Date(); 
   if (isNaN(d.getTime())) return String(raw);
-  return d.toLocaleDateString("en-GB"); // DD/MM/YYYY
+  return d.toLocaleDateString("en-GB"); 
 };
 
 /* ---------------- Component ---------------- */
@@ -308,7 +339,6 @@ export default function InvoiceView({
   const loggedInUser = useMemo(() => getLoggedInUser(), []);
   const trackUrl = buildTrackUrl(shipment);
 
-  // Hydrate branch from location state once on mount
   useEffect(() => {
     const hydratedBranch = location.state?.branch || null;
     if (hydratedBranch) {
@@ -316,7 +346,6 @@ export default function InvoiceView({
     }
   }, [location.state?.branch]);
 
-  // boot: prefer prop → route state → fetch by id
   useEffect(() => {
     (async () => {
       try {
@@ -341,11 +370,10 @@ export default function InvoiceView({
     })();
   }, [id, injected, hydratedFromState]);
 
-  /* ------------- Fetch branch (shipment ids first, then user's branch id) ------------- */
+  /* ------------- Fetch branch ------------- */
   useEffect(() => {
-    if ((!shipment && !loggedInUser) || branch) return; // Don't fetch if branch is already hydrated
+    if ((!shipment && !loggedInUser) || branch) return; 
 
-    // Collect plausible branch IDs. Prioritize shipment's branch if available.
     const idCandidates = (
       shipment
         ? [shipment.branch_id, shipment.branch?.id, shipment.origin_branch_id]
@@ -368,7 +396,7 @@ export default function InvoiceView({
           setBranch(b);
         }
       } catch {
-        if (alive) setBranch(null); // Only nullify on error
+        if (alive) setBranch(null); 
       }
     })();
 
@@ -383,6 +411,17 @@ export default function InvoiceView({
 
     const fetchParty = async (role, allParties) => {
       const isSender = role === "sender";
+
+      // 1. TRUST THE SHIPMENT OBJECT FIRST if it's already fully populated
+      // This prevents bad lookups if we already have the data from CreateCargo
+      const directObj = isSender ? shipment.sender : shipment.receiver;
+      if (directObj && typeof directObj === 'object' && directObj.id) {
+          // Verify it matches the ID we expect
+          const expectedId = isSender ? shipment.sender_id : shipment.receiver_id;
+          if (!expectedId || String(directObj.id) === String(expectedId)) {
+             return extractParty(directObj);
+          }
+      }
 
       const idCandidates = isSender
         ? [
@@ -404,6 +443,7 @@ export default function InvoiceView({
           shipment.receiver ||
           shipment.consignee_name;
 
+      // 2. Try ID Lookup
       for (const pid of idCandidates) {
         if (!pid) continue;
         try {
@@ -413,10 +453,12 @@ export default function InvoiceView({
         } catch {}
       }
 
+      // 3. Fallback: Search by Name AND Phone
       if (name) {
         const list =
           allParties ||
           parsePartyList(await getParties({ search: name }).catch(() => []));
+        
         const roleFiltered = list.filter((p) => {
           const typeId = Number(p.customer_type_id);
           const typeName = String(p.customer_type || "").toLowerCase();
@@ -425,9 +467,14 @@ export default function InvoiceView({
             : typeId === 2 || typeName.includes("receiver");
         });
 
+        // Determine specific phone from shipment to ensure we pick the correct "Nikhil"
+        const specificPhone = isSender
+         ? pick(shipment, ["sender_phone", "shipper_phone", "sender_mobile"], "")
+         : pick(shipment, ["receiver_phone", "consignee_phone", "receiver_mobile"], "");
+
         const chosen =
-          matchByName(name, roleFiltered) ||
-          matchByName(name, list) ||
+          matchByNameAndPhone(name, specificPhone, roleFiltered) || // Match specific phone first
+          matchByNameAndPhone(name, specificPhone, list) ||
           roleFiltered[0] ||
           list[0] ||
           null;
@@ -435,6 +482,7 @@ export default function InvoiceView({
         if (chosen) return extractParty(chosen);
       }
 
+      // 4. Fallback: Use raw strings from Shipment
       const address = isSender
         ? pick(
             shipment,
@@ -459,7 +507,6 @@ export default function InvoiceView({
         ? pick(shipment, ["sender_email", "shipper_email"], "")
         : pick(shipment, ["receiver_email", "consignee_email"], "");
 
-      // pull possible doc ids from the shipment for the fallback
       const docId = isSender
         ? pick(
             shipment,
@@ -476,9 +523,8 @@ export default function InvoiceView({
         id: null,
         name: name || "—",
         email,
-        contact_number: phone, // -> becomes .tel via extractParty
-        address, // -> address_line + address
-        // keep city/pin/dist/state empty so Consignee address remains only 'address'
+        contact_number: phone, 
+        address, 
         city: "",
         postal_code: "",
         district: "",
@@ -518,7 +564,6 @@ export default function InvoiceView({
   const boxRows = useMemo(() => {
     if (!shipment) return [];
 
-    // Prefer boxes from shipment; otherwise infer from items
     let boxes = coerceBoxes(shipment.boxes);
     const hasBoxes = Object.keys(boxes).length > 0;
 
@@ -530,23 +575,17 @@ export default function InvoiceView({
     const keys = Object.keys(boxes).sort((a, b) => Number(a) - Number(b));
     const labelByKey = Object.fromEntries(keys.map((k, i) => [k, `B${i + 1}`]));
 
-    // parse possible box_weight formats
-    const topWeights = parseBoxWeights(shipment?.box_weight); // array like [10, 12, ...]
+    const topWeights = parseBoxWeights(shipment?.box_weight); 
     const rowCount = Math.max(keys.length, topWeights.length, 0);
 
     const rows = [];
     for (let i = 0; i < rowCount; i++) {
-      const k = keys[i]; // "1", "2", ...
+      const k = keys[i]; 
       const box = k ? boxes[k] || {} : {};
       const items = Array.isArray(box?.items) ? box.items : [];
 
-      // Fallback derivations
       const boxLevelWeight = Number(box?.box_weight ?? box?.weight ?? 0) || 0;
-
-      // Sum inside items if needed
       const inferredWeightFromItems = sumItemWeights(items);
-
-      // Priority: global array weight → explicit box weight → sum of item weights → 0
       const weightCandidate =
         (Number.isFinite(topWeights[i]) ? topWeights[i] : null) ??
         (boxLevelWeight || null) ??
@@ -554,17 +593,16 @@ export default function InvoiceView({
         0;
 
       rows.push({
-        sl: i + 1, // Sl No = 1,2,3...
-        boxNo: labelByKey[k] ?? `B${i + 1}`, // Proper B1/B2...
+        sl: i + 1, 
+        boxNo: labelByKey[k] ?? `B${i + 1}`, 
         weight: toFixed3(weightCandidate),
       });
     }
     return rows;
   }, [shipment]);
 
-  /** Items grid (kept same as your build) */
+  /** Items grid */
   const items = useMemo(() => {
-    // If API gave nested boxes, flatten to items for the two-column table
     const hasBoxes =
       shipment?.boxes && Object.keys(coerceBoxes(shipment.boxes)).length > 0;
     if (hasBoxes) {
@@ -594,7 +632,6 @@ export default function InvoiceView({
       return out;
     }
 
-    // Legacy flat items
     const raw = Array.isArray(shipment?.items) ? shipment.items : [];
     return raw.map((it, i) => {
       const qty =
@@ -622,6 +659,7 @@ export default function InvoiceView({
   }, [shipment]);
 
   const getName = (p, side, sh) =>
+    p?.original_name ||
     p?.name ||
     sh?.[side]?.name ||
     sh?.[side] ||
@@ -642,14 +680,10 @@ export default function InvoiceView({
   const getPhone = (p, side, sh, pickFn) =>
     p?.phones ||
     pickFn?.(sh?.[side], ["contact_number", "whatsapp_number"], "") ||
-    [
-      pickFn?.(
-        sh,
-        side === "sender"
-          ? ["sender_phone", "shipper_phone", "sender_mobile"]
-          : ["receiver_phone", "consignee_phone", "receiver_mobile"],
-        ""
-      ),
+    [ 
+      pickFn?.(sh, side === "sender" 
+          ? ["sender_phone", "shipper_phone", "sender_mobile"] 
+          : ["receiver_phone", "consignee_phone", "receiver_mobile"], ""),
       pickFn?.(
         sh,
         side === "sender"
@@ -661,22 +695,9 @@ export default function InvoiceView({
       .filter(Boolean)
       .join(" / ");
 
-  const getPincode = (p, side, sh, pickFn) =>
-    p?.pincode ||
-    pickFn?.(
-      sh?.[side],
-      ["pincode", "pin", "zip", "zipcode", "postal_code"],
-      ""
-    ) ||
-    pickFn?.(
-      sh,
-      side === "sender" ? ["sender_pincode"] : ["receiver_pincode"],
-      ""
-    );
-
   const ROWS_PER_COL = 15;
 
-  // --- DIRECT from API fields (robust, no math here) ---
+  // --- DIRECT from API fields ---
   const num = (v) =>
     v === null || v === undefined || v === ""
       ? 0
@@ -686,13 +707,12 @@ export default function InvoiceView({
     pickNum(shipment, [
       "amount_total_weight",
       "charges.amount_total_weight",
-      "total_cost", // sent from CreateCargo
-      "subtotal", // any backend alias
-      "summary.subtotal", // nested alias (defensive)
+      "total_cost", 
+      "subtotal", 
+      "summary.subtotal", 
     ])
   );
 
-  // Bill charges, VAT, and final total — read directly, but with aliases
   const bill = num(
     pickNum(shipment, ["bill_charges", "summary.bill_charges", "charges.bill"])
   );
@@ -701,9 +721,9 @@ export default function InvoiceView({
   );
   const total = num(
     pickNum(shipment, [
-      "total_amount", // preferred final
-      "net_total", // alt
-      "grand_total", // alias
+      "total_amount", 
+      "net_total", 
+      "grand_total", 
       "summary.total",
     ])
   );
@@ -712,7 +732,6 @@ export default function InvoiceView({
   const colB = items.slice(ROWS_PER_COL, ROWS_PER_COL * 2);
   while (colA.length < ROWS_PER_COL) colA.push(null);
   while (colB.length < ROWS_PER_COL) colB.push(null);
-  const overflowCount = Math.max(0, items.length - ROWS_PER_COL * 2);
 
   if (loading)
     return <div className="p-6 text-slate-600">Loading invoice…</div>;
@@ -724,7 +743,6 @@ export default function InvoiceView({
     pick(shipment, ["total_weight", "weight", "gross_weight"], 0)
   );
 
-  // MAX rows per page
   const ROWS_PER_PAGE = 45;
 
   const paginatedItems = [];
@@ -761,38 +779,30 @@ export default function InvoiceView({
     page-break-inside: avoid !important;
   }
 }
-
       `}</style>
 
-      {!modal && (
-        <div className="sticky top-0 z-10 border-b bg-white print:hidden">
-          <div className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-2">
-            <button
-              onClick={() => window.history.back()}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-            >
-              ← Back
-            </button>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() =>
-                  generateInvoicePDF(
-                    shipment,
-                    items,
-                    boxRows,
-                    branch,
-                    senderParty,
-                    receiverParty
-                  )
-                }
-                className="rounded-lg bg-black px-4 py-1.5 text-sm font-semibold text-white hover:bg-gray-800"
-              >
-                Download PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+     {!modal && (
+  <div className="sticky top-0 z-10 border-b bg-white print:hidden">
+    <div className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-2">
+      <button
+        onClick={() => window.history.back()}
+        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+      >
+        ← Back
+      </button>
+
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={() => generateInvoicePDF(shipment)}
+          className="rounded-lg bg-black px-4 py-1.5 text-sm font-semibold text-white hover:bg-gray-800"
+        >
+          Download PDF
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
       <main className="flex justify-center items-center mx-auto max-w-5xl p-4 invoice-main-section">
         <div
@@ -809,24 +819,28 @@ export default function InvoiceView({
                   alt={branch?.branch_name || "Gulf Cargo"}
                   className="h-12 object-contain"
                 />
-                {/* <div className="header-invoice-address mt-1 text-slate-700">
-                  BRANCH: {branch?.branch_name ||
-                    pick(shipment, ["branch", "branch_name", "branch_label", "branch.name", "origin_branch_name", "origin_branch"], "—")}
-                </div> */}
-                {/* Address (optional small line) */}
                 <div className="header-invoice-address mt-0.5 text-[11px] text-slate-600 normal-case">
                   {s(branch?.branch_address, "")}
                 </div>
               </div>
 
               {/* MIDDLE: QR */}
-              <div className="invoice-qrcode flex items-center justify-center">
-                <img
-                  src={buildQrUrl(trackUrl, 120)}
-                  alt="Invoice QR (Track this package)"
-                  className="h-28 w-28 rounded bg-white p-1 ring-1 ring-slate-200"
-                />
-              </div>
+   <div className="invoice-qrcode flex flex-col items-center justify-center">
+  <img
+    src={buildQrUrl(trackUrl, 120)}
+    alt="Invoice QR"
+    className="h-28 w-28 rounded bg-white p-1 ring-1 ring-slate-200"
+  />
+
+  {/* <div className="tracking-block">
+    Tracking No: <strong>{getTrackCode(shipment) || "—"}</strong>
+    <br />
+    <a href={trackUrl} target="_blank" rel="noopener noreferrer">
+      Track Shipment →
+    </a>
+  </div> */}
+</div>
+
 
               {/* RIGHT: Arabic name + Phone + Email */}
               <div className="text-center sm:text-right">
@@ -853,9 +867,6 @@ export default function InvoiceView({
                 <p className="header-invoice-branch-contact mt-1 font-medium text-slate-800">
                   {pickPhoneFromBranch(branch)}
                 </p>
-                {/* <p className="header-invoice-branch-contact text-slate-700">
-                  {s(branch?.branch_email, "—")}
-                </p> */}
               </div>
             </div>
 
@@ -889,33 +900,6 @@ export default function InvoiceView({
               </div>
             </div>
           </div>
-
-          {/* Meta */}
-          {/* <div className="grid grid-cols-5 gap-4  px-2 py-1.5 sm:grid-cols-5">
-            <div>
-              <div className="tracking-invoice-heading">Track No.</div>
-              <div className="tracking-invoice-content-track-no">{getTrackCode(shipment) || "—"}</div>
-            </div>
-            <div>
-              <div className="tracking-invoice-heading">Box No.</div>
-              <div className="tracking-invoice-content">{billNo}</div>
-            </div>
-            <div>
-              <div className="tracking-invoice-heading">Branch</div>
-              <div className="tracking-invoice-content">
-                {branch?.branch_name ||
-                  pick(shipment, ["branch", "branch_name", "branch_label", "branch.name", "origin_branch_name", "origin_branch"], "—")}
-              </div>
-            </div>
-            <div>
-              <div className="tracking-invoice-heading">Delivery Type</div>
-              <div className="tracking-invoice-content">{shipment?.delivery_type || "—"}</div>
-            </div>
-            <div>
-              <div className="tracking-invoice-heading">Payment Method</div>
-              <div className="tracking-invoice-content">{shipment?.payment_method || "—"}</div>
-            </div>
-          </div> */}
 
           <div
             className="
@@ -973,7 +957,7 @@ export default function InvoiceView({
                   </div>
                   <div className="mx-1">:</div>
                   <div className="invoice-parties-text">
-                    {computePieces(shipment)}
+                    {computePieces(shipment, boxRows, items)}
                   </div>
                 </div>
 
@@ -1027,12 +1011,6 @@ export default function InvoiceView({
                       "—"}
                   </div>
                 </div>
-
-                {/* <div className="flex items-start">
-        <div className="w-15 shrink-0 text-slate-700">Village</div>
-        <div className="mx-1">:</div>
-        <div>{receiverParty?.raw?.village || ""}</div>
-      </div> */}
 
                 {/* Post + PIN on one line */}
                 <div className="flex items-start">
@@ -1162,14 +1140,12 @@ export default function InvoiceView({
             </div>
 
             {(() => {
-              // Split items into left (25) & right (20)
               const LEFT_ROWS = 25;
               const RIGHT_ROWS = 20;
 
               const leftItems = items.slice(0, LEFT_ROWS);
               const rightItems = items.slice(LEFT_ROWS, LEFT_ROWS + RIGHT_ROWS);
 
-              // Add fillers to keep table height fixed
               const leftFillers = Array.from({
                 length: LEFT_ROWS - leftItems.length,
               });
@@ -1179,7 +1155,7 @@ export default function InvoiceView({
 
               return (
                 <div className="grid grid-cols-2 gap-3">
-                  {/* ---------------- LEFT TABLE (25 rows) ---------------- */}
+                  {/* ---------------- LEFT TABLE ---------------- */}
                   <table className="items-table w-full table-fixed border-collapse text-[10px]">
                     <colgroup>
                       <col style={{ width: "55px" }} />
@@ -1217,7 +1193,6 @@ export default function InvoiceView({
                         </tr>
                       ))}
 
-                      {/* Fill to 25 rows */}
                       {leftFillers.map((_, i) => (
                         <tr key={`LEFT-FILL-${i}`}>
                           <td className="border border-slate-800">&nbsp;</td>
@@ -1229,7 +1204,7 @@ export default function InvoiceView({
                     </tbody>
                   </table>
 
-                  {/* ---------------- RIGHT TABLE (20 rows) ---------------- */}
+                  {/* ---------------- RIGHT TABLE ---------------- */}
                   <table className="items-table w-full table-fixed border-collapse text-[10px]">
                     <colgroup>
                       <col style={{ width: "55px" }} />
@@ -1267,7 +1242,6 @@ export default function InvoiceView({
                         </tr>
                       ))}
 
-                      {/* Fill to exactly 20 rows */}
                       {rightFillers.map((_, i) => (
                         <tr key={`RIGHT-FILL-${i}`}>
                           <td className="border border-slate-800">&nbsp;</td>
@@ -1278,7 +1252,7 @@ export default function InvoiceView({
                       ))}
                     </tbody>
 
-                    {/* ----------- TOTALS FIXED AT BOTTOM (after 20 rows) ----------- */}
+                    {/* ----------- TOTALS ----------- */}
                     <tfoot>
                       <tr>
                         <td
