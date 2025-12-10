@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
-import { getCustomShipmentById } from "../../services/billShipmentApi";
-import { getShipmentStatuses } from "../../services/cargoService";
+import { getPhysicalBillById } from "../../services/billShipmentApi";
+import { getShipmentStatuses } from "../../services/coreService";
 import { IoMdArrowBack } from "react-icons/io";
 import "./PhysicalBill.css";
 
@@ -79,7 +79,7 @@ export default function SingleBill() {
       }
       try {
         setLoading(true);
-        const res = await getCustomShipmentById(id);
+        const res = await getPhysicalBillById(id);
         const data =
           res?.data?.data && typeof res.data.data === "object"
             ? res.data.data
@@ -132,7 +132,7 @@ export default function SingleBill() {
   const tone = toneFromStatus(view?.status);
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-8 font-[Inter,ui-sans-serif]">
+    <section className="mx-auto w-full font-[Inter,ui-sans-serif]">
       <Toaster position="top-right" />
 
       {/* Actions / Breadcrumb */}

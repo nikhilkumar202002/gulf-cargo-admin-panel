@@ -383,6 +383,16 @@ export const getUserCountByRole = async (roleId) => {
   }
 };
 
+export const getCargoCounts = async () => {
+  try {
+    const res = await api.get("/cargo-counts");
+    return unwrap(res);
+  } catch (err) {
+    console.error("Error fetching cargo counts:", err);
+    return { success: false, total_cargos: 0, branch_wise_counts: [] };
+  }
+};
+
 // --- Sender Count ---
 export const getSenderCount = async () => {
   try {
@@ -471,6 +481,7 @@ export const getAllDashboardCounts = async () => {
       getReceiverCount(),
       getBranchCount(),
       getShipmentCountsByStatus(),
+      getCargoCounts(),
     ]);
 
     return {
@@ -484,6 +495,9 @@ export const getAllDashboardCounts = async () => {
       outForDelivery: statusCounts.outForDelivery,
       enquiriesCollected: statusCounts.enquiriesCollected,
       waitingForClearance: statusCounts.waitingForClearance,
+
+      totalCargos: Number(cargoCounts?.total_cargos || 0),
+      branchWiseCargos: cargoCounts?.branch_wise_counts || [],
     };
   } catch (err) {
     console.error("Error fetching all dashboard counters:", err);
@@ -498,6 +512,8 @@ export const getAllDashboardCounts = async () => {
       outForDelivery: 0,
       enquiriesCollected: 0,
       waitingForClearance: 0,
+      totalCargos: 0,
+      branchWiseCargos: [],
     };
   }
 };
@@ -519,6 +535,10 @@ export const getCounters = async () => {
     outForDelivery: counts.outForDelivery,
     enquiriesCollected: counts.enquiriesCollected,
     waitingForClearance: counts.waitingForClearance,
+    
+    totalCargos: counts.totalCargos,
+    branchWiseCargos: counts.branchWiseCargos,
+
     activeUsers: activeUsers,
     staffPresent: 0,
     staffAbsent: 0,

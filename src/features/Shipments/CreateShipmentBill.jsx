@@ -845,7 +845,7 @@ const handleImportExcel = async (e) => {
 
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="w-full mx-auto">
       <RightToast
         open={toast.open}
         variant={toast.variant}
