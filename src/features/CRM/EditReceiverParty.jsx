@@ -1,11 +1,9 @@
 import React from "react";
 import { Toaster, toast } from "react-hot-toast";
 
-import { getProfile } from "../../api/accountApi";
-import { getDocumentTypes } from "../../api/documentTypeApi";
-import { getCountries, getStatesByCountry, getDistrictsByState } from "../../api/worldApi";
-import { getPhoneCodes } from "../../api/phoneCodeApi";
-import { updateParty } from "../../api/partiesApi";
+import { getProfile } from "../../services/authService";
+import { getCountries, getStatesByCountry, getDistrictsByState,getPhoneCodes,getDocumentTypes } from "../../services/coreService";
+import { updateParty } from "../../services/partyService";
 
 /* Helpers – same as ReceiverForm */ // :contentReference[oaicite:2]{index=2}
 import {

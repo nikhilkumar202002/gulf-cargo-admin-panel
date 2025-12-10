@@ -1,12 +1,6 @@
 import React, { useEffect, useState } from "react";
-import {
-  getBillShipmentById,
-  updateBillShipment,
-} from "../../api/billShipmentApi";
-import { getPhysicalBills } from "../../api/billApi";
-import { getActivePorts } from "../../api/portApi";
-import { getActiveShipmentStatuses } from "../../api/shipmentStatusApi";
-import { getActiveShipmentMethods } from "../../api/shipmentMethodApi";
+import { getBillShipmentById, updateBillShipment,getPhysicalBills} from "../../services/billShipmentApi";
+import { getPorts, getShipmentStatuses, getActiveShipmentMethods } from "../../services/coreService";
 import { FaSave, FaTrash, FaPlus, FaTimes } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -66,8 +60,8 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
       setLoading(true);
       try {
         const [portRes, statusRes, methodRes, shipmentRes] = await Promise.all([
-          getActivePorts(),
-          getActiveShipmentStatuses(),
+          getPorts(),
+          getShipmentStatuses(),
           getActiveShipmentMethods(),
           getBillShipmentById(shipmentId),
         ]);

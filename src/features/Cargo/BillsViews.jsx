@@ -1,10 +1,10 @@
 // src/pages/PhysicalBills/BillsViews.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Toaster, toast } from "react-hot-toast";
-import { getPhysicalBills, importCustomShipments,deletePhysicalBill  } from "../../api/billApi";
+import { getPhysicalBills, importCustomShipments,deletePhysicalBill  } from "../../services/billShipmentApi";
 import { Link } from "react-router-dom";
 import { FiEye, FiSearch, FiUpload, FiFilter, FiInbox,FiEdit2, FiTrash2  } from "react-icons/fi";
-import { getActiveShipmentStatuses } from "../../api/shipmentStatusApi";
+import { getShipmentStatuses } from "../../services/coreService";
 
 function BillsViews() {
   const [rows, setRows] = useState([]);
@@ -117,7 +117,7 @@ useEffect(() => {
   let alive = true;
   (async () => {
     try {
-      const list = await getActiveShipmentStatuses();
+      const list = await getShipmentStatuses();
       if (!alive) return;
       setStatusList(Array.isArray(list) ? list : []);
     } catch (e) {

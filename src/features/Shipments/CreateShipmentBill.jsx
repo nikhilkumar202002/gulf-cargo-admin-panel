@@ -13,7 +13,7 @@ import {
   getPhysicalBills,
   importCustomShipments,
   createBillShipment
-} from "../../services/billingService";
+} from "../../services/billShipmentApi.js"
 
 import "./PhysicalBill.css";
 

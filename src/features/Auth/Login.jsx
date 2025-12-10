@@ -1,4 +1,3 @@
-import "./LoginRegisterStyles.css";
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Button } from "@radix-ui/themes";
 import { Link, useNavigate, useLocation } from "react-router-dom";
@@ -7,6 +6,7 @@ import { login } from "../../store/slices/authSlice";
 import AdminImage from "../../assets/bg/admin-bg.webp";
 import Logo from "../../assets/Logo.png";
 import { FiEye, FiEyeOff } from "react-icons/fi";
+import "./LoginRegisterStyles.css";
 
 /* ---------------- Top toast (slide down) ---------------- */
 function TopToast({ open, message = "", variant = "error", onClose, duration = 2500 }) {
@@ -119,8 +119,18 @@ export default function Login() {
     setToastOpen(true);
   };
 
-  // Show loading spinner until auth is initialized
+  // 1. Get Auth State
   const { isInitialized, token } = useSelector((s) => s.auth || {});
+
+  // 2. MOVED UP: Effect hooks must be called before conditional returns
+  useEffect(() => {
+    if (token) {
+      const redirectTo = location.state?.from?.pathname || "/dashboard";
+      navigate(redirectTo, { replace: true });
+    }
+  }, [token, navigate, location.state?.from?.pathname]);
+
+  // 3. Conditional Loading State
   if (!isInitialized) {
     return (
       <section className="login-page" style={{ backgroundImage: `url(${AdminImage})` }}>
@@ -133,14 +143,6 @@ export default function Login() {
       </section>
     );
   }
-
-  // Redirect authenticated users to dashboard
-  useEffect(() => {
-    if (token) {
-      const redirectTo = location.state?.from?.pathname || "/dashboard";
-      navigate(redirectTo, { replace: true });
-    }
-  }, [token, navigate, location.state?.from?.pathname]);
 
   const handleLogin = async (e) => {
     e.preventDefault();

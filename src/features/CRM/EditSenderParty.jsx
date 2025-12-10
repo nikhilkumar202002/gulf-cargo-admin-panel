@@ -1,10 +1,9 @@
 import React from "react";
 import { Toaster, toast } from "react-hot-toast";
 
-import { getProfile } from "../../api/accountApi";
-import { getActiveDocumentTypes } from "../../services/coreService";
-import { getPhoneCodes } from "../../api/phoneCodeApi";
-import { updateParty } from "../../api/partiesApi";
+import { getProfile } from "../../services/authService";
+import { getActiveDocumentTypes,getPhoneCodes } from "../../services/coreService";
+import { updateParty } from "../../services/partyService";
 
 import {
   normalizeList,

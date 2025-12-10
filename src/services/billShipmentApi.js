@@ -37,7 +37,8 @@ export const deletePhysicalBill = async (id) => {
   return unwrap(res);
 };
 
-export const importPhysicalBills = async (file, extra = {}) => {
+// ✅ RENAMED: Changed from importPhysicalBills to importCustomShipments
+export const importCustomShipments = async (file, extra = {}) => {
   const fd = new FormData();
   fd.append("file", file);
   Object.entries(extra).forEach(([k, v]) => fd.append(k, v));

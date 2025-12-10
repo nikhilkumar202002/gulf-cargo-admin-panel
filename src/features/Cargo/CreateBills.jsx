@@ -4,8 +4,8 @@ import { LiaFileInvoiceDollarSolid } from "react-icons/lia";
 import { Link } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import "./PhysicalBill.css";
-import { getActiveShipmentMethods } from "../../api/shipmentMethodApi";
-import { createCustomShipment } from "../../api/billApi"; // <-- NEW
+import { getShipmentMethods } from "../../services/coreService";
+import { createPhysicalBill } from "../../services/billShipmentApi"; // <-- NEW
 
 function CreateBills() {
   const FIXED_STATUS = 13; // locked status
@@ -29,7 +29,7 @@ function CreateBills() {
     (async () => {
       try {
         setLoadingMethods(true);
-        const methods = await getActiveShipmentMethods();
+        const methods = await getShipmentMethods();
         if (!alive) return;
         const opts = methods?.length
           ? methods.map((m) => ({
@@ -102,7 +102,7 @@ function CreateBills() {
       // Example alt payload:
       // const payload = { bill_no: form.bill_no, ... }
 
-      const { data } = await createCustomShipment(payload);
+      const { data } = await createPhysicalBill(payload);
 
       if (data?.success) {
         // success toast with details from server

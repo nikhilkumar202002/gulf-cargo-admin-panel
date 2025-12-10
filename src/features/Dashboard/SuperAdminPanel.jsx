@@ -132,15 +132,10 @@ export default function SuperAdminPanel() {
 
         {/* KPI Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
-          <KPI
-            value={counters.softwareShipmentsToday}
-            label="Software Shipments Today"
-            Icon={FaTruck}
-            loading={loading}
-          />
+
           <KPI
             value={counters.physicalShipmentsToday}
-            label="Physical Shipments Today"
+            label="Total Shipments"
             Icon={FaTruckLoading}
             loading={loading}
           />

@@ -1,6 +1,6 @@
 // src/pages/InvoiceModal.jsx
 import React from "react";
-import InvoiceOnly from "../../../components/InvoiceOnly"; // 👈 use InvoiceOnly instead
+import InvoiceOnly from "../../Finance/Invoices/InvoiceOnly"; // 👈 use InvoiceOnly instead
 
 export default function BillModal({ open, onClose, shipment }) {
   if (!open || !shipment) return null;

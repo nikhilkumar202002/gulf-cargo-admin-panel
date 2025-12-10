@@ -8,8 +8,8 @@ import "./layout.css";
 import { useDispatch, useSelector } from "react-redux";
 import { logoutUser } from "../store/slices/authSlice";
 import { setBranch as setBranchGlobal, clearBranch } from "../store/slices/branchSlice";
-import { getProfile } from "../api/accountApi";
-import axiosInstance from "../api/axiosInstance";
+import { getProfile } from "../services/authService";
+import axios from "../services/axios";
 
 /* skeleton helpers */
 const SkeletonLine = ({ w = 120, h = 16, className = "" }) => (
@@ -22,7 +22,7 @@ const SkeletonCircle = ({ size = 32, className = "" }) => (
 const resolveAssetUrl = (u) => {
   if (!u) return null;
   if (/^(https?:)?\/\//i.test(u) || u.startsWith("data:") || u.startsWith("blob:")) return u;
-  const base = (axiosInstance?.defaults?.baseURL || "").replace(/\/+$/, "");
+  const base = (axios?.defaults?.baseURL || "").replace(/\/+$/, "");
   return `${base}/${String(u).replace(/^\/+/, "")}`;
 };
 

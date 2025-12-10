@@ -1,72 +1,127 @@
-import React, { useEffect, useRef, Suspense, memo } from "react";
+// src/App.jsx
+import React, { useEffect, useRef, Suspense, memo, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { clearAuth, setInitialized, setUser } from "./store/slices/authSlice";
+import { clearAuth, setInitialized, setUser, logoutUser } from "./store/slices/authSlice";
 import { RouterProvider } from "react-router-dom";
 import router from "./router/router";
-import axiosInstance from "./api/axiosInstance";
+// FIXED: Correct import path pointing to your existing service
+import api from "./services/axios"; 
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
+const INACTIVITY_LIMIT = 5 * 60 * 1000; // 30 Minutes
 
 const App = memo(function App() {
   const dispatch = useDispatch();
-  const { token, status, user, sessionId, isInitialized } = useSelector((s) => s.auth || {});
-  const bootstrappedTokenRef = useRef(null);
-
+  const { token, isInitialized } = useSelector((s) => s.auth || {});
+  const queryClient = useQueryClient();
+  
+  // Refs for timers and channels
+  const idleTimerRef = useRef(null);
   const bcRef = useRef(null);
 
-  // Initialize auth state on app load
+  // --- 1. Session & API Initialization ---
   useEffect(() => {
     const initializeAuth = async () => {
       if (!isInitialized) {
-        const token = localStorage.getItem("token");
-        if (token) {
+        const storedToken = localStorage.getItem("token");
+        const loginDate = localStorage.getItem("loginDate");
+        const today = new Date().toDateString();
+
+        // A. Daily Logout / Cache Clear Check
+        if (loginDate && loginDate !== today) {
+          console.log("New day detected. Clearing session and cache.");
+          dispatch(logoutUser());
+          queryClient.clear(); 
+          localStorage.clear(); // Or specific keys
+          dispatch(setInitialized());
+          return;
+        }
+
+        // B. Validate Token
+        if (storedToken) {
           try {
-            // Validate token by fetching profile
-            const profileRes = await axiosInstance.get("/profile", {
-              headers: { Authorization: `Bearer ${token}` },
-            });
+            // Attach token to instance just in case
+            api.defaults.headers.Authorization = `Bearer ${storedToken}`;
+            const profileRes = await api.get("/profile");
             const user = profileRes.data?.user || profileRes.data?.data || profileRes.data;
+            
             if (user) {
-              // Token is valid, set user
               dispatch(setUser(user));
             } else {
-              // Invalid token, clear auth
               dispatch(clearAuth());
             }
           } catch (error) {
-            // Token invalid or expired, clear auth
+            console.error("Token validation failed:", error);
             dispatch(clearAuth());
           }
+        } else {
+          dispatch(clearAuth());
         }
-        // Mark as initialized regardless
         dispatch(setInitialized());
       }
     };
 
     initializeAuth();
-  }, [dispatch, isInitialized]);
+  }, [dispatch, isInitialized, queryClient]);
 
- // Cross-tab logout & login awareness (same browser profile).
+  // --- 2. Inactivity Timer (30 Mins) ---
+  const handleUserActivity = useCallback(() => {
+    if (!token) return;
+    
+    // Reset timer on activity
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    
+    idleTimerRef.current = setTimeout(() => {
+      console.log("User inactive for 30 mins. Logging out.");
+      dispatch(logoutUser());
+      alert("Session expired due to inactivity.");
+    }, INACTIVITY_LIMIT);
+  }, [dispatch, token]);
+
   useEffect(() => {
-    // BroadcastChannel for instant tab messaging
-    bcRef.current = new BroadcastChannel("auth");
+    if (!token) return;
+
+    // Listen for activity
+    const events = ["mousedown", "keydown", "scroll", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, handleUserActivity));
+
+    // Initialize timer
+    handleUserActivity();
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, handleUserActivity));
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [token, handleUserActivity]);
+
+  // --- 3. Cross-Tab / Single Tab Enforcement ---
+  useEffect(() => {
+    bcRef.current = new BroadcastChannel("gulf_cargo_auth");
     const bc = bcRef.current;
+
+    if (token) {
+      // Tell other tabs a new session is active here
+      bc.postMessage({ type: "NEW_TAB_OPENED" });
+    }
+
     bc.onmessage = (e) => {
-      if (e?.data === "logout") dispatch(clearAuth());
-      if (e?.data?.type === "session-update") {
-        const incomingSid = e.data.sessionId;
-        if (sessionId && incomingSid && incomingSid !== sessionId) {
-          dispatch(clearAuth());
-        }
+      const { type } = e.data;
+
+      // If another tab logs out, we logout
+      if (type === "LOGOUT") {
+        dispatch(clearAuth());
+      }
+
+      // If another tab opened (Single Tab Enforcement), logout this old one
+      if (type === "NEW_TAB_OPENED" && token) {
+        console.log("New tab detected. Logging out this instance.");
+        // Optional: Show UI overlay instead of immediate hard logout if preferred
+        dispatch(clearAuth()); 
       }
     };
 
-    // storage event fires on other tabs when localStorage changes
+    // Listen to localStorage changes (fallback for some browsers)
     const onStorage = (ev) => {
-      if (ev.key === "session_id") {
-        if (sessionId && ev.newValue && ev.newValue !== sessionId) {
-          dispatch(clearAuth());
-        }
-      }
       if (ev.key === "token" && !ev.newValue && token) {
         dispatch(clearAuth());
       }
@@ -77,10 +132,10 @@ const App = memo(function App() {
       window.removeEventListener("storage", onStorage);
       bc.close();
     };
-  }, [dispatch, token, sessionId]);
+  }, [dispatch, token]);
 
   return (
-    <Suspense fallback={<div style={{ height: 2, background: "#eee" }} />}>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
       <RouterProvider router={router} />
     </Suspense>
   );

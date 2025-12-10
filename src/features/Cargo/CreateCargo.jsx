@@ -33,7 +33,7 @@ import {
 import { getProfile } from "../../services/authService";
 import { getPartiesByCustomerType } from "../../services/partyService";
 
-import InvoiceModal from "../../components/InvoiceModal";
+import InvoiceModal from "../../features/Finance/Invoices/InvoiceModal";
 import BillModal from "./components/BillModal";
 import "./ShipmentStyles.css";
 import SenderModal from "../CRM/modals/SenderModal";

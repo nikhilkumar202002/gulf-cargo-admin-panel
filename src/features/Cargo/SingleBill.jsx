@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
-import { getCustomShipmentById } from "../../api/billApi";
-import { getActiveShipmentStatuses } from "../../api/shipmentStatusApi";
+import { getCustomShipmentById } from "../../services/billShipmentApi";
+import { getShipmentStatuses } from "../../services/cargoService";
 import { IoMdArrowBack } from "react-icons/io";
 import "./PhysicalBill.css";
 
@@ -105,7 +105,7 @@ export default function SingleBill() {
     (async () => {
       try {
         setStatusLoading(true);
-        const list = await getActiveShipmentStatuses(); // returns array; handles {data:{data:[]}} shapes
+        const list = await getShipmentStatuses(); // returns array; handles {data:{data:[]}} shapes
         setStatusList(Array.isArray(list) ? list : []);
       } catch (e) {
         // Silent fail; we still render raw status id

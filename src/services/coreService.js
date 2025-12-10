@@ -417,15 +417,15 @@ export const getBranchCount = async () => {
 };
 
 // --- Active Users Count (Live/Concurrent users) ---
-export const getActiveUsersCount = async () => {
-  try {
-    const { data } = await api.get("/active-users");
-    return data?.count || 0;
-  } catch (err) {
-    console.error("Error fetching active users count:", err);
-    return 0;
-  }
-};
+// export const getActiveUsersCount = async () => {
+//   try {
+//     const { data } = await api.get("/active-users");
+//     return data?.count || 0;
+//   } catch (err) {
+//     console.error("Error fetching active users count:", err);
+//     return 0;
+//   }
+// };
 
 // --- Shipment Counts By Status ---
 export const getShipmentCountsByStatus = async () => {
@@ -506,7 +506,7 @@ export const getAllDashboardCounts = async () => {
 export const getCounters = async () => {
   const [counts, activeUsers] = await Promise.all([
     getAllDashboardCounts(),
-    getActiveUsersCount(),
+    // getActiveUsersCount(),
   ]);
 
   return {
