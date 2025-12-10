@@ -474,6 +474,7 @@ export const getAllDashboardCounts = async () => {
       receiverCount,
       branchCount,
       statusCounts,
+      cargoCounts, // <--- FIXED: Added this variable to capture the 7th promise result
     ] = await Promise.all([
       getShipmentCounts(),
       getUserCountByRole(2), // Staff
@@ -496,24 +497,16 @@ export const getAllDashboardCounts = async () => {
       enquiriesCollected: statusCounts.enquiriesCollected,
       waitingForClearance: statusCounts.waitingForClearance,
 
+      // Now this variable exists and won't crash
       totalCargos: Number(cargoCounts?.total_cargos || 0),
       branchWiseCargos: cargoCounts?.branch_wise_counts || [],
     };
   } catch (err) {
     console.error("Error fetching all dashboard counters:", err);
     return {
-      software: 0,
-      physical: 0,
-      totalShipments: 0,
-      staff: 0,
-      senders: 0,
-      receivers: 0,
-      branches: 0,
-      outForDelivery: 0,
-      enquiriesCollected: 0,
-      waitingForClearance: 0,
-      totalCargos: 0,
-      branchWiseCargos: [],
+      software: 0, physical: 0, totalShipments: 0, staff: 0, senders: 0,
+      receivers: 0, branches: 0, outForDelivery: 0, enquiriesCollected: 0,
+      waitingForClearance: 0, totalCargos: 0, branchWiseCargos: [],
     };
   }
 };

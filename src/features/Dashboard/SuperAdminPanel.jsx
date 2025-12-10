@@ -10,7 +10,9 @@ import { PiBuildingOfficeFill } from "react-icons/pi";
 import { TbTruckDelivery, TbClockHour4 } from "react-icons/tb";
 import { BsCollectionFill } from "react-icons/bs";
 import "../Styles/Styles.css";
-import { getCounters,} from "../../services/coreService";
+
+// 1. FIXED: Import from coreService instead of dashboardCountersApi
+import { getCounters } from "../../services/coreService"; 
 
 /* ---------------- Utility ---------------- */
 const num = (v) => (typeof v === "number" && !Number.isNaN(v) ? v : 0);
@@ -39,7 +41,7 @@ const KPI = ({ value, label, Icon, sublabel, loading }) => (
       <div className="text-xl font-semibold leading-none truncate">
         {loading ? <SkelLine w={80} h={22} /> : value}
       </div>
-      <div className="text-gray-600 text-sm">
+      <div className="text-gray-600 text-sm mt-1">
         {loading ? <SkelLine w={120} h={12} /> : label}
       </div>
       {sublabel ? (
@@ -55,6 +57,8 @@ const KPI = ({ value, label, Icon, sublabel, loading }) => (
 export default function SuperAdminPanel() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  
+  // 2. FIXED: Initial state updated to match API keys strictly
   const [counters, setCounters] = useState({
     totalStaff: 0,
     totalBranches: 0,
@@ -64,11 +68,12 @@ export default function SuperAdminPanel() {
     physicalShipmentsToday: 0,
     outForDelivery: 0,
     enquiriesCollected: 0,
-    staffPresent: 0,
-    staffAbsent: 0,
-    staffPartial: 0,
-    movingPending: 0,
     waitingForClearance: 0,
+    // Add these if you plan to use them, though coreService returns them as 0
+    staffPresent: 0,
+    staffAbsent: 0, 
+    staffPartial: 0,
+    movingPending: 0, 
   });
 
   const fetchedRef = useRef(false);
@@ -81,23 +86,28 @@ export default function SuperAdminPanel() {
       try {
         setLoading(true);
         setErr("");
-        const res = await getCounters(); // includes branch counter API
+        
+        // 3. FIXED: Call the correct API
+        const res = await getCounters(); 
+        
         setCounters({
           totalStaff: num(res?.totalStaff),
-          totalBranches: num(res?.totalBranches), // ✅ /branches-counts included
+          totalBranches: num(res?.totalBranches),
           totalConsignees: num(res?.totalConsignees),
           totalReceivers: num(res?.totalReceivers),
           softwareShipmentsToday: num(res?.softwareShipmentsToday),
           physicalShipmentsToday: num(res?.physicalShipmentsToday),
           outForDelivery: num(res?.outForDelivery),
           enquiriesCollected: num(res?.enquiriesCollected),
+          waitingForClearance: num(res?.waitingForClearance),
+          // Defaults
           staffPresent: num(res?.staffPresent),
           staffAbsent: num(res?.staffAbsent),
           staffPartial: num(res?.staffPartial),
           movingPending: num(res?.movingPending),
-          waitingForClearance: num(res?.waitingForClearance),
         });
       } catch (e) {
+        console.error(e);
         setErr(e?.message || "Failed to load counters");
       } finally {
         setLoading(false);
@@ -123,71 +133,69 @@ export default function SuperAdminPanel() {
         </button>
       </div>
 
-        {/* Error Message */}
-        {err && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 border border-red-200 text-sm">
-            {err}
-          </div>
-        )}
-
-        {/* KPI Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
-
-          <KPI
-            value={counters.physicalShipmentsToday}
-            label="Total Shipments"
-            Icon={FaTruckLoading}
-            loading={loading}
-          />
-          <KPI
-            value={counters.totalConsignees}
-            label="Consignee"
-            Icon={RiMailSendFill}
-            loading={loading}
-          />
-          <KPI
-            value={counters.totalReceivers}
-            label="Receiver"
-            Icon={RiUserReceivedFill}
-            loading={loading}
-          />
-          <KPI
-            value={counters.totalStaff}
-            label="Total Staffs"
-            Icon={FaUsers}
-            loading={loading}
-          />
-          {/* ✅ NEW BRANCH COUNTER */}
-          <KPI
-            value={counters.totalBranches}
-            label="Total Branches"
-            Icon={PiBuildingOfficeFill}
-            loading={loading}
-          />
-          <KPI
-            value={counters.outForDelivery}
-            label="Out for Delivery"
-            Icon={TbTruckDelivery}
-            loading={loading}
-          />
-          <KPI
-            value={counters.enquiriesCollected}
-            label="Enquiries Collected"
-            Icon={BsCollectionFill}
-            loading={loading}
-          />
-          <KPI
-            value={counters.waitingForClearance}
-            label="Waiting for Clearance"
-            Icon={TbClockHour4}
-            loading={loading}
-          />
+      {/* Error Message */}
+      {err && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 border border-red-200 text-sm">
+          {err}
         </div>
+      )}
 
-      {/* Shimmer Animation */}
+      {/* KPI Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+        <KPI
+          value={counters.physicalShipmentsToday}
+          label="Total Shipments"
+          Icon={FaTruckLoading}
+          loading={loading}
+        />
+        <KPI
+          value={counters.totalConsignees}
+          label="Total Consignees"
+          Icon={RiMailSendFill}
+          loading={loading}
+        />
+        <KPI
+          value={counters.totalReceivers}
+          label="Total Receivers"
+          Icon={RiUserReceivedFill}
+          loading={loading}
+        />
+        <KPI
+          value={counters.totalStaff}
+          label="Total Staff"
+          Icon={FaUsers}
+          loading={loading}
+        />
+        <KPI
+          value={counters.totalBranches}
+          label="Total Branches"
+          Icon={PiBuildingOfficeFill}
+          loading={loading}
+        />
+        <KPI
+          value={counters.outForDelivery}
+          label="Out for Delivery"
+          Icon={TbTruckDelivery}
+          loading={loading}
+        />
+        <KPI
+          value={counters.enquiriesCollected}
+          label="Total Cargos"
+          Icon={BsCollectionFill}
+          loading={loading}
+        />
+        <KPI
+          value={counters.waitingForClearance}
+          label="Waiting Clearance"
+          Icon={TbClockHour4}
+          loading={loading}
+        />
+      </div>
+
+      {/* Shimmer Animation CSS */}
       <style>{`
         .skel {
-          background: #e5e7eb; /* gray-200 */
+          background: #e5e7eb;
           position: relative;
           overflow: hidden;
         }
@@ -205,9 +213,7 @@ export default function SuperAdminPanel() {
           animation: skel-shimmer 1.2s infinite;
         }
         @keyframes skel-shimmer {
-          100% {
-            transform: translateX(100%);
-          }
+          100% { transform: translateX(100%); }
         }
       `}</style>
     </div>

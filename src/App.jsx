@@ -8,7 +8,7 @@ import router from "./router/router";
 import api from "./services/axios"; 
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 
-const INACTIVITY_LIMIT = 5 * 60 * 1000; // 30 Minutes
+const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 Minutes
 
 const App = memo(function App() {
   const dispatch = useDispatch();
