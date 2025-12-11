@@ -3,6 +3,10 @@ import { addressFromParty, phoneFromParty } from "../../../utils/cargoHelpers";
 import { FaUserPlus, FaChevronDown, FaSearch } from "react-icons/fa";
 import { FiSend, FiUserCheck } from "react-icons/fi";
 
+/* --- Helpers for robust field access --- */
+const getContact = (p) => p.contact_number || p.phone || p.mobile || "";
+const getWA = (p) => p.whatsapp_number || p.whatsapp || p.whats_app || "";
+
 /* --- Custom Auto-Suggest Component with Keyboard Support --- */
 const PartySelect = ({ options, value, onChange, placeholder, disabled }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -28,15 +32,18 @@ const PartySelect = ({ options, value, onChange, placeholder, disabled }) => {
     }
   }, [selectedItem, isOpen, value]);
 
-  // Filter options based on query
+  // Filter options based on query (Name, Contact, WhatsApp)
   const filteredOptions = useMemo(() => {
     if (!query || (selectedItem && query === selectedItem.name)) return options;
     const lowerQ = query.toLowerCase();
+    
     return options.filter((op) => {
       const name = (op.name || "").toLowerCase();
-      const phone = (op.contact_number || "").toLowerCase();
-      const wa = (op.whatsapp_number || "").toLowerCase();
-      return name.includes(lowerQ) || phone.includes(lowerQ) || wa.includes(lowerQ);
+      const contact = getContact(op).toLowerCase();
+      const wa = getWA(op).toLowerCase();
+      
+      // Search matches name, contact number, or whatsapp number
+      return name.includes(lowerQ) || contact.includes(lowerQ) || wa.includes(lowerQ);
     });
   }, [options, query, selectedItem]);
 
@@ -152,30 +159,35 @@ const PartySelect = ({ options, value, onChange, placeholder, disabled }) => {
               No parties found.
             </li>
           ) : (
-            filteredOptions.map((op, i) => (
-              <li
-                key={op.id}
-                className={`relative cursor-pointer select-none px-4 py-2 border-b border-slate-50 last:border-none ${
-                  i === highlightIndex ? "bg-indigo-50 text-indigo-700" : "text-slate-900 hover:bg-slate-50"
-                } ${String(op.id) === String(value) ? "bg-slate-100" : ""}`}
-                onClick={() => handleSelect(op.id)}
-                onMouseEnter={() => setHighlightIndex(i)}
-              >
-                <div className="flex flex-col gap-0.5">
-                  <span className={`block truncate ${String(op.id) === String(value) ? "font-bold" : "font-medium"}`}>
-                    {op.name}
-                  </span>
-                  <div className="flex items-center gap-3 text-xs text-slate-500">
-                     <span>📞 {op.contact_number || "—"}</span>
-                     {op.whatsapp_number && op.whatsapp_number !== op.contact_number && (
-                       <span className="flex items-center gap-1 text-emerald-600 font-medium">
-                          <span>💬</span> {op.whatsapp_number}
-                       </span>
-                     )}
+            filteredOptions.map((op, i) => {
+              const contact = getContact(op);
+              const wa = getWA(op);
+              
+              return (
+                <li
+                  key={op.id}
+                  className={`relative cursor-pointer select-none px-4 py-2 border-b border-slate-50 last:border-none ${
+                    i === highlightIndex ? "bg-indigo-50 text-indigo-700" : "text-slate-900 hover:bg-slate-50"
+                  } ${String(op.id) === String(value) ? "bg-slate-100" : ""}`}
+                  onClick={() => handleSelect(op.id)}
+                  onMouseEnter={() => setHighlightIndex(i)}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className={`block truncate ${String(op.id) === String(value) ? "font-bold" : "font-medium"}`}>
+                      {op.name}
+                    </span>
+                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                       <span>📞 {contact || "—"}</span>
+                       {wa && wa !== contact && (
+                         <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                            <span>💬</span> {wa}
+                         </span>
+                       )}
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))
+                </li>
+              );
+            })
           )}
         </ul>
       )}
@@ -195,7 +207,6 @@ export const PartyInfo = React.memo(
     selectedReceiver,
   }) => {
     
-    // Updated to accept the event object structure returned by PartySelect
     const handleSelectChange = (e, type) => {
       const id = e.target.value; 
       updateForm((d) => {
