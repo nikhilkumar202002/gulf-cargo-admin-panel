@@ -100,11 +100,8 @@ export default function SuperAdminPanel() {
           outForDelivery: num(res?.outForDelivery),
           enquiriesCollected: num(res?.enquiriesCollected),
           waitingForClearance: num(res?.waitingForClearance),
-          // Defaults
-          staffPresent: num(res?.staffPresent),
-          staffAbsent: num(res?.staffAbsent),
-          staffPartial: num(res?.staffPartial),
-          movingPending: num(res?.movingPending),
+
+          totalCargos: num(res?.totalCargos),
         });
       } catch (e) {
         console.error(e);
@@ -178,12 +175,12 @@ export default function SuperAdminPanel() {
           Icon={TbTruckDelivery}
           loading={loading}
         />
-        <KPI
-          value={counters.enquiriesCollected}
-          label="Total Cargos"
-          Icon={BsCollectionFill}
-          loading={loading}
-        />
+      <KPI
+  value={counters.totalCargos} 
+  label="Total Cargos"
+  Icon={BsCollectionFill}
+  loading={loading}
+/>
         <KPI
           value={counters.waitingForClearance}
           label="Waiting Clearance"

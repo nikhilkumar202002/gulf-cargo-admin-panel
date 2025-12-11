@@ -1,7 +1,187 @@
-import React from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { addressFromParty, phoneFromParty } from "../../../utils/cargoHelpers";
-import { FaUserPlus } from "react-icons/fa";
+import { FaUserPlus, FaChevronDown, FaSearch } from "react-icons/fa";
 import { FiSend, FiUserCheck } from "react-icons/fi";
+
+/* --- Custom Auto-Suggest Component with Keyboard Support --- */
+const PartySelect = ({ options, value, onChange, placeholder, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  
+  const wrapperRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  // Find selected item to display its name initially
+  const selectedItem = useMemo(
+    () => options.find((op) => String(op.id) === String(value)),
+    [options, value]
+  );
+
+  // Sync query with selected value only when menu is closed
+  useEffect(() => {
+    if (!isOpen && selectedItem) {
+      setQuery(selectedItem.name);
+    } else if (!isOpen && !value) {
+      setQuery("");
+    }
+  }, [selectedItem, isOpen, value]);
+
+  // Filter options based on query
+  const filteredOptions = useMemo(() => {
+    if (!query || (selectedItem && query === selectedItem.name)) return options;
+    const lowerQ = query.toLowerCase();
+    return options.filter((op) => {
+      const name = (op.name || "").toLowerCase();
+      const phone = (op.contact_number || "").toLowerCase();
+      const wa = (op.whatsapp_number || "").toLowerCase();
+      return name.includes(lowerQ) || phone.includes(lowerQ) || wa.includes(lowerQ);
+    });
+  }, [options, query, selectedItem]);
+
+  // Handle Keyboard Navigation
+  const handleKeyDown = (e) => {
+    if (disabled) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+      } else {
+        setHighlightIndex((prev) => 
+          prev < filteredOptions.length - 1 ? prev + 1 : prev
+        );
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (isOpen) {
+        setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (isOpen && highlightIndex >= 0 && filteredOptions[highlightIndex]) {
+        handleSelect(filteredOptions[highlightIndex].id);
+      } else if (!isOpen) {
+          setIsOpen(true); // Open on enter if closed
+      }
+    } else if (e.key === "Escape") {
+      setIsOpen(false);
+      inputRef.current?.blur();
+    } else if (e.key === "Tab") {
+       setIsOpen(false);
+    }
+  };
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (isOpen && listRef.current && highlightIndex >= 0) {
+      const activeItem = listRef.current.children[highlightIndex];
+      if (activeItem) {
+        activeItem.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [highlightIndex, isOpen]);
+
+  // Reset highlight when filtering
+  useEffect(() => {
+    setHighlightIndex(-1);
+  }, [query]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setIsOpen(false);
+        // Revert query to selected item name on blur
+        if (selectedItem) setQuery(selectedItem.name);
+        else setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [selectedItem]);
+
+  const handleSelect = (id) => {
+    onChange({ target: { value: id } }); // Mimic event for parent handler compatibility
+    setIsOpen(false);
+    setHighlightIndex(-1);
+  };
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          className="w-full rounded-lg border border-slate-300 bg-white pl-3 pr-8 py-2.5 text-sm text-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 h-[44px]"
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => {
+              if(!selectedItem) setQuery("");
+              setIsOpen(true);
+          }}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          autoComplete="off"
+        />
+        <div 
+            className="absolute inset-y-0 right-0 flex items-center px-3 cursor-pointer text-slate-400 hover:text-slate-600"
+            onClick={() => {
+                if(!disabled) {
+                    setIsOpen(!isOpen);
+                    if(!isOpen) inputRef.current?.focus();
+                }
+            }}
+        >
+          {isOpen ? <FaSearch size={12} /> : <FaChevronDown size={12} />}
+        </div>
+      </div>
+
+      {isOpen && (
+        <ul 
+            ref={listRef}
+            className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-xl ring-1 ring-black/5 focus:outline-none sm:text-sm"
+        >
+          {filteredOptions.length === 0 ? (
+            <li className="relative cursor-default select-none px-4 py-3 text-slate-500 italic text-center">
+              No parties found.
+            </li>
+          ) : (
+            filteredOptions.map((op, i) => (
+              <li
+                key={op.id}
+                className={`relative cursor-pointer select-none px-4 py-2 border-b border-slate-50 last:border-none ${
+                  i === highlightIndex ? "bg-indigo-50 text-indigo-700" : "text-slate-900 hover:bg-slate-50"
+                } ${String(op.id) === String(value) ? "bg-slate-100" : ""}`}
+                onClick={() => handleSelect(op.id)}
+                onMouseEnter={() => setHighlightIndex(i)}
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className={`block truncate ${String(op.id) === String(value) ? "font-bold" : "font-medium"}`}>
+                    {op.name}
+                  </span>
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                     <span>📞 {op.contact_number || "—"}</span>
+                     {op.whatsapp_number && op.whatsapp_number !== op.contact_number && (
+                       <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                          <span>💬</span> {op.whatsapp_number}
+                       </span>
+                     )}
+                  </div>
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+};
 
 export const PartyInfo = React.memo(
   ({
@@ -14,8 +194,10 @@ export const PartyInfo = React.memo(
     selectedSender,
     selectedReceiver,
   }) => {
+    
+    // Updated to accept the event object structure returned by PartySelect
     const handleSelectChange = (e, type) => {
-      const id = e.target.value;
+      const id = e.target.value; 
       updateForm((d) => {
         if (type === "sender") {
           d.senderId = id;
@@ -55,25 +237,13 @@ export const PartyInfo = React.memo(
           </div>
 
           <div className="space-y-3">
-            <div className="relative">
-              <select
-                key={`${options.senders.length}-${form.senderId}`}
-                className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 h-[44px]"
-                value={form.senderId || ""}
-                onChange={(e) => handleSelectChange(e, "sender")}
-                disabled={loading}
-              >
-                <option value="">Select Sender...</option>
-                {options.senders.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {(s.name || "").toUpperCase()}
-                  </option>
-                ))}
-              </select>
-               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
-                <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
-              </div>
-            </div>
+            <PartySelect
+              options={options.senders}
+              value={form.senderId}
+              onChange={(e) => handleSelectChange(e, "sender")}
+              placeholder="Search Name / Phone..."
+              disabled={loading}
+            />
 
             <div className="space-y-2 rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm">
               <div className="flex flex-col">
@@ -116,25 +286,13 @@ export const PartyInfo = React.memo(
           </div>
 
           <div className="space-y-3">
-             <div className="relative">
-              <select
-                key={`${options.receivers.length}-${form.receiverId}`}
-                className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 h-[44px]"
-                value={form.receiverId || ""}
-                onChange={(e) => handleSelectChange(e, "receiver")}
-                disabled={loading}
-              >
-                <option value="">Select Receiver...</option>
-                {options.receivers.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {(r.name || "").toUpperCase()}
-                  </option>
-                ))}
-              </select>
-               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
-                <svg className="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
-              </div>
-            </div>
+             <PartySelect
+              options={options.receivers}
+              value={form.receiverId}
+              onChange={(e) => handleSelectChange(e, "receiver")}
+              placeholder="Search Name / Phone..."
+              disabled={loading}
+            />
 
             <div className="space-y-2 rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm">
               <div className="flex flex-col">

@@ -4,9 +4,8 @@ import { useDispatch, useSelector } from "react-redux";
 import { clearAuth, setInitialized, setUser, logoutUser } from "./store/slices/authSlice";
 import { RouterProvider } from "react-router-dom";
 import router from "./router/router";
-// FIXED: Correct import path pointing to your existing service
 import api from "./services/axios"; 
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 Minutes
 
@@ -18,6 +17,15 @@ const App = memo(function App() {
   // Refs for timers and channels
   const idleTimerRef = useRef(null);
   const bcRef = useRef(null);
+
+  // --- [FIX] Clear React Query Cache on Logout ---
+  // This watches the token; if it disappears (logout), we wipe the memory cache.
+  useEffect(() => {
+    if (!token) {
+      queryClient.removeQueries();
+      queryClient.clear();
+    }
+  }, [token, queryClient]);
 
   // --- 1. Session & API Initialization ---
   useEffect(() => {
@@ -32,7 +40,7 @@ const App = memo(function App() {
           console.log("New day detected. Clearing session and cache.");
           dispatch(logoutUser());
           queryClient.clear(); 
-          localStorage.clear(); // Or specific keys
+          localStorage.clear(); 
           dispatch(setInitialized());
           return;
         }
@@ -68,7 +76,6 @@ const App = memo(function App() {
   const handleUserActivity = useCallback(() => {
     if (!token) return;
     
-    // Reset timer on activity
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     
     idleTimerRef.current = setTimeout(() => {
@@ -81,11 +88,9 @@ const App = memo(function App() {
   useEffect(() => {
     if (!token) return;
 
-    // Listen for activity
     const events = ["mousedown", "keydown", "scroll", "touchstart"];
     events.forEach((e) => window.addEventListener(e, handleUserActivity));
 
-    // Initialize timer
     handleUserActivity();
 
     return () => {
@@ -100,27 +105,20 @@ const App = memo(function App() {
     const bc = bcRef.current;
 
     if (token) {
-      // Tell other tabs a new session is active here
       bc.postMessage({ type: "NEW_TAB_OPENED" });
     }
 
     bc.onmessage = (e) => {
       const { type } = e.data;
-
-      // If another tab logs out, we logout
       if (type === "LOGOUT") {
         dispatch(clearAuth());
       }
-
-      // If another tab opened (Single Tab Enforcement), logout this old one
       if (type === "NEW_TAB_OPENED" && token) {
         console.log("New tab detected. Logging out this instance.");
-        // Optional: Show UI overlay instead of immediate hard logout if preferred
         dispatch(clearAuth()); 
       }
     };
 
-    // Listen to localStorage changes (fallback for some browsers)
     const onStorage = (ev) => {
       if (ev.key === "token" && !ev.newValue && token) {
         dispatch(clearAuth());

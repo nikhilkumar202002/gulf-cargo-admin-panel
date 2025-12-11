@@ -13,6 +13,20 @@ const getUserFromStorage = () => {
   }
 };
 
+// Helper to clean application-specific cache keys
+const cleanAppCache = () => {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      // Remove keys starting with 'cargo_' (dropdowns) or 'party_' (viewed customers)
+      if (key.startsWith("cargo_") || key.startsWith("party_")) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch (e) {
+    console.warn("Failed to clean app cache", e);
+  }
+};
+
 export const login = createAsyncThunk(
   "auth/login",
   async (credentials, { rejectWithValue }) => {
@@ -21,6 +35,9 @@ export const login = createAsyncThunk(
       const token = loginData.token || loginData.access_token || loginData.data?.token;
 
       if (!token) return rejectWithValue("No token received");
+
+      // [FIX] Safety Clear: Ensure no old data exists before starting new session
+      cleanAppCache();
 
       // 1. Save Token
       setTokenStore(token, { persist: true });
@@ -38,7 +55,7 @@ export const login = createAsyncThunk(
 
       if (!user) return rejectWithValue("Failed to load user profile");
 
-      // 3. Persist User & Date (For Daily Logout)
+      // 3. Persist User & Date
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("loginDate", new Date().toDateString());
 
@@ -95,11 +112,13 @@ const slice = createSlice({
       state.user = null;
       state.status = "idle";
       state.error = null;
-      // Note: We don't reset isInitialized to avoid full app reload flicker
       
       clearTokenStore(); 
       localStorage.removeItem("user");
-      localStorage.removeItem("loginDate"); // Clear date so next login sets it fresh
+      localStorage.removeItem("loginDate");
+
+      // [FIX] Clear Manual Caches on Logout
+      cleanAppCache();
     },
     setInitialized: (state) => {
       state.isInitialized = true;

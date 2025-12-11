@@ -1037,7 +1037,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
                 </div>
 
                 {/* Dist + State on one line */}
-               <div className="grid grid-cols-3 gap-6 items-start text-[10px]">
+               <div className="grid grid-cols-3 items-start text-[10px]">
 
   {/* COUNTRY */}
   <div className="flex items-start gap-1">

@@ -43,6 +43,7 @@
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.9.1",
     "react-to-print": "^3.2.0",
+    "recharts": "^3.5.1",
     "use-immer": "^0.11.0",
     "xlsx": "^0.18.5"
   },

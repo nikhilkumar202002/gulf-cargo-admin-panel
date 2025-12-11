@@ -1,3 +1,4 @@
+// src/features/Shipments/ShipmentBillView.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   getBillShipments,
@@ -392,7 +393,7 @@ export default function ShipmentBillView() {
                   <th className="py-3 px-3 border-b">Origin</th>
                   <th className="py-3 px-3 border-b">Destination</th>
                   <th className="py-3 px-3 border-b">Method</th>
-                  <th className="py-3 px-3 border-b text-center">Items</th>
+                  <th className="py-3 px-3 border-b text-center">Boxes</th>
                   <th className="py-3 px-3 border-b">Created On</th>
                   <th className="py-3 px-3 border-b">Status</th>
                   <th className="py-3 px-3 border-b text-center">Action</th>
@@ -415,9 +416,12 @@ export default function ShipmentBillView() {
                     const sl = (page - 1) * pageSize + idx + 1;
                     // Handle status being an object OR a string/null safely
                     const statusName = r?.status?.name || r?.status || "Pending";
-                    const itemsCount = Array.isArray(r?.custom_shipments)
-                      ? r.custom_shipments.length
+                    
+                    // --- CHANGED HERE: Calculate box count from bills ---
+                    const boxCount = Array.isArray(r?.custom_shipments)
+                      ? r.custom_shipments.reduce((acc, bill) => acc + (Number(bill.pcs) || 0), 0)
                       : 0;
+
                     const checked = selectedIds.has(id);
 
                     return (
@@ -449,7 +453,7 @@ export default function ShipmentBillView() {
                         <td className="py-2 px-3 text-gray-600">
                           {r?.shipping_method?.name || "—"}
                         </td>
-                        <td className="py-2 px-3 text-center text-gray-600">{itemsCount}</td>
+                        <td className="py-2 px-3 text-center text-gray-600">{boxCount}</td>
                         <td className="py-2 px-3 text-gray-500 whitespace-nowrap">
                           {fmtDateTime(r.created_at)}
                         </td>

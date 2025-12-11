@@ -1,3 +1,4 @@
+// src/features/Shipments/BillshipmentSingle.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getBillShipmentById, getPhysicalBills } from "../../services/billShipmentApi";
@@ -89,6 +90,11 @@ export default function BillshipmentSingle() {
     return bills.slice(start, start + pageSize);
   }, [page, bills]);
 
+  // --- Calculate Total Boxes ---
+  const totalBoxes = useMemo(() => {
+    return bills.reduce((sum, b) => sum + (Number(b.pcs) || 0), 0);
+  }, [bills]);
+
   if (loading) return <div className="p-10 text-center">Loading...</div>;
   if (error) return <div className="p-10 text-center text-red-600">{error}</div>;
 
@@ -142,9 +148,15 @@ export default function BillshipmentSingle() {
       <div className="bg-white border rounded-2xl shadow-lg overflow-hidden">
         <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-800">Physical Bills</h2>
-          <span className="px-4 py-1.5 bg-white border rounded-full text-gray-700 text-sm">
-            Total Bills: {bills.length}
-          </span>
+          
+          <div className="flex gap-2">
+            <span className="px-4 py-1.5 bg-white border rounded-full text-gray-700 text-sm">
+                Total Bills: <strong>{bills.length}</strong>
+            </span>
+            <span className="px-4 py-1.5 bg-white border rounded-full text-gray-700 text-sm">
+                Total Boxes: <strong>{totalBoxes}</strong>
+            </span>
+          </div>
         </div>
 
         <table className="min-w-full table-auto text-sm">
