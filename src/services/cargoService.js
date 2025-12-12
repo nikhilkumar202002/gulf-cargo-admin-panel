@@ -13,8 +13,15 @@ export const listCargos = async (params = {}) => {
 
 export const getCargoById = async (id) => {
   if (!id) throw new Error("Cargo ID is required");
-  const res = await api.get(`/cargos/${id}`);
-  return res?.data?.data ?? res?.data?.cargo ?? unwrap(res);
+  // Try plural first, then singular fallback
+  try {
+      const res = await api.get(`/cargos/${id}`);
+      return res?.data?.data ?? res?.data?.cargo ?? unwrap(res);
+  } catch (e) {
+      // Fallback to singular endpoint if plural 404s
+      const res = await api.get(`/cargo/${id}`);
+      return res?.data?.data ?? res?.data?.cargo ?? unwrap(res);
+  }
 };
 
 export const createCargo = async (payload) => {

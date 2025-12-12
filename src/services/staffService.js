@@ -47,16 +47,6 @@ export const createStaff = async (payload) => {
 
 export const updateStaff = async (id, payload) => {
   if (!id) throw new Error("Staff ID is required");
-
-  const isFormData = payload instanceof FormData;
-
-  // 1. Force POST method spoofing if using FormData (files)
-  if (isFormData) {
-    if (!payload.has("_method")) {
-      payload.append("_method", "PUT");
-    }
-  }
-
   const res = await api.post(`/profile/update/${id}`, payload);
   return unwrap(res);
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { IoEye, IoEyeOff } from "react-icons/io5";
 import { Toaster, toast } from "react-hot-toast";
 import { FaUserEdit } from "react-icons/fa";
@@ -52,7 +52,6 @@ const parseDate = (dateStr) => {
 };
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const phoneRe = /^[0-9]{6,15}$/;
 const passwordRe = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
 
 export default function StaffEdit() {
@@ -98,7 +97,7 @@ export default function StaffEdit() {
   // --- File Handling ---
   const [avatarPreview, setAvatarPreview] = useState(""); 
   const [existingDocs, setExistingDocs] = useState([]); 
-  const [removeDocIds, setRemoveDocIds] = useState(new Set()); 
+  // const [removeDocIds, setRemoveDocIds] = useState(new Set()); // Usage if API supports deletion
 
   // --- Validation ---
   const [errors, setErrors] = useState({});
@@ -145,7 +144,7 @@ export default function StaffEdit() {
         setSelectedBranch(String(branchId));
         setSelectedRole(String(roleId));
         
-        const isActive = String(staff.status).toLowerCase() === "active" || staff.status === 1 || staff.status === true;
+        const isActive = String(staff.status).toLowerCase() === "active" || staff.status === 1 || staff.status === true || staff.status === "1";
         setStatus(isActive ? "1" : "0");
 
         setAppointmentDate(parseDate(staff.appointment_date));
@@ -162,9 +161,11 @@ export default function StaffEdit() {
 
         // Fix Phone
         const fullPhone = staff.contact_number || staff.phone || "";
-        // Attempt to remove code if possible or just set full
+        // Attempt to remove code if possible or just set full. 
+        // Ideally we check if phone starts with known code.
         setContactNumber(fullPhone.replace(/^\+/, '')); 
         
+        // Default code to 966 if none found, or extract from user if available (logic simplified here)
         const defaultCode = toList(pc).find(c => extractDial(c) === "+966");
         if (defaultCode) {
              setPhoneCodeId(String(getId(defaultCode)));
@@ -237,14 +238,17 @@ export default function StaffEdit() {
     setSubmitting(true);
     try {
       const fd = new FormData();
-      // ⚠️ CRITICAL FIX: Method spoofing for file upload updates
-      fd.append("_method", "PUT"); 
+      // Method spoofing for file upload updates in Laravel/PHP backends
+      fd.append("_method", "POST"); 
 
       fd.append("name", name);
       fd.append("email", email);
       if(password) fd.append("password", password);
 
-      fd.append("contact_number", `${phoneCode}${contactNumber}`);
+      // Construct full contact number
+      const dial = phoneCode.startsWith("+") ? phoneCode : `+${phoneCode}`;
+      const cleanNum = contactNumber.replace(/\D/g, "");
+      fd.append("contact_number", `${dial}${cleanNum}`);
       
       fd.append("branch_id", selectedBranch);
       fd.append("role_id", selectedRole);
@@ -265,8 +269,14 @@ export default function StaffEdit() {
       newDocFiles.forEach(f => fd.append("documents[]", f));
 
       await updateStaff(id, fd);
+      
+      // ✅ Success Toast
       toast.success("Staff updated successfully!");
-      navigate("/hr/staff"); 
+      
+      // ✅ Redirect to List
+      setTimeout(() => {
+          navigate("/hr&staff/allstaffs"); 
+      }, 500);
 
     } catch (err) {
       console.error(err);
@@ -283,6 +293,7 @@ export default function StaffEdit() {
   return (
     <div className="min-h-screen w-full flex items-start justify-center p-6 bg-gray-50">
       <div className="w-full max-w-5xl">
+        <Toaster position="top-right" />
         
         {/* Header + Breadcrumb */}
         <div className="mb-6 flex items-center justify-between gap-3">

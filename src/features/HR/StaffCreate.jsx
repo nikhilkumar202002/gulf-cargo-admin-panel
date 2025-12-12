@@ -10,7 +10,14 @@ import "../Styles/Styles.css";
 import "./StaffStyles.css";
 
 import { createStaff } from "../../services/staffService";
-import { getActiveBranches, getRoles } from "../../services/coreService";
+// [FIX] Added missing imports here
+import { 
+  getActiveBranches, 
+  getRoles, 
+  getVisaTypes, 
+  getActiveDocumentTypes, 
+  getPhoneCodes 
+} from "../../services/coreService";
 import StaffModal from "./components/StaffModal";
 // import axiosInstance from "../../api/axiosInstance";
 
@@ -88,7 +95,7 @@ const resolveFileUrl = (src) => {
   if (!src || /^https?:\/\//i.test(src) || /^data:image/i.test(src)) {
     return src || "";
   }
-  const base = (axiosInstance.defaults.baseURL || "").replace(/\/+$/, "");
+  const base = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
   const path = String(src).replace(/^\/+/, "");
   return base && path ? `${base}/${path}` : path;
 };
@@ -253,7 +260,8 @@ const StaffCreate = () => {
       // VISAS
       try {
         setLoadingVisas(true);
-        setVisas(toList(await getActiveVisaTypes(token)));
+        // [FIX] Corrected function call
+        setVisas(toList(await getVisaTypes()));
       } catch {
         setVisas([]);
       } finally {
@@ -263,7 +271,8 @@ const StaffCreate = () => {
       // ROLES
       try {
         setLoadingRoles(true);
-        setRoles(toList(await getAllRoles()));
+        // [FIX] Corrected function call (getAllRoles -> getRoles)
+        setRoles(toList(await getRoles()));
       } catch {
         setRoles([]);
       } finally {
@@ -283,7 +292,7 @@ const StaffCreate = () => {
       // PHONE CODES
       try {
         const pc = await getPhoneCodes();
-        setPhoneCodes(pc);
+        setPhoneCodes(toList(pc));
       } catch {
         setPhoneCodes([]);
       }
@@ -915,7 +924,6 @@ const StaffCreate = () => {
             </section>
 
             {/* Section: Branch & Dates */}
-          {/* Section: Branch & Dates */}
 <section className="space-y-4 pt-1 border-t border-slate-100">
   <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
     Branch & Dates
