@@ -1,3 +1,4 @@
+// src/features/Cargo/CreateCargo.jsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useImmer } from "use-immer";
 import { useSelector } from "react-redux";
@@ -611,7 +612,14 @@ useEffect(() => {
       : String(boxes.length + 1);
   }, [boxes]);
 
-  const addBox = useCallback(() => {
+const addBox = useCallback(() => {
+    // 🛑 VALIDATION: Max 45 items check
+    const currentTotal = boxes.reduce((sum, b) => sum + (b.items?.length || 0), 0);
+    if (currentTotal >= 45) {
+      showToast("45 items exceeded. Only 45 items allowed per invoice.", "error");
+      return;
+    }
+
     const nextNo = getNextBoxNumber();
     updateBoxes((draft) => {
       draft.push({
@@ -620,7 +628,7 @@ useEffect(() => {
         items: [{ name: "", pieces: 1, item_weight: 0 }],
       });
     });
-  }, [getNextBoxNumber, updateBoxes]);
+  }, [getNextBoxNumber, updateBoxes, boxes, showToast]);
 
   const removeBox = useCallback(
     (boxIndex) => {
@@ -644,13 +652,20 @@ useEffect(() => {
     [updateBoxes]
   );
 
-  const addItemToBox = useCallback(
+const addItemToBox = useCallback(
     (boxIndex) => {
+      // 🛑 VALIDATION: Max 45 items check
+      const currentTotal = boxes.reduce((sum, b) => sum + (b.items?.length || 0), 0);
+      if (currentTotal >= 45) {
+        showToast("45 items exceeded. Only 45 items allowed per invoice.", "error");
+        return;
+      }
+
       updateBoxes((draft) => {
         draft[boxIndex]?.items.push({ name: "", pieces: 1, item_weight: 0 });
       });
     },
-    [updateBoxes]
+    [updateBoxes, boxes, showToast]
   );
 
   const removeItemFromBox = useCallback(
@@ -863,16 +878,18 @@ const softResetForNext = useCallback((branchId, nextInvoiceNo) => {
     const flatItems = [];
     currentBoxes.forEach((box, bIdx) => {
       const bn = String(box.box_number ?? bIdx + 1);
-      const boxW = Number(box.box_weight ?? box.weight ?? 0) || 0;
+      // Removed the logic that forced box weight onto the first item
       const list =
         Array.isArray(box.items) && box.items.length
           ? box.items
-          : [{ name: "", pieces: 0 }];
-      let putWeightOnFirst = true;
+          : [{ name: "", pieces: 0, item_weight: 0 }];
+      
       list.forEach((it, i) => {
         const name =
           (it.name && String(it.name).trim()) || `Box ${bn} contents`;
         const pcs = Number.isFinite(Number(it.pieces)) ? Number(it.pieces) : 0;
+        const w = Number(it.item_weight ?? 0); // Use item weight specifically
+
         flatItems.push({
           slno: String(i + 1),
           box_number: bn,
@@ -880,9 +897,8 @@ const softResetForNext = useCallback((branchId, nextInvoiceNo) => {
           piece_no: String(pcs),
           unit_price: "0.00",
           total_price: "0.00",
-          weight: (putWeightOnFirst ? boxW : 0).toFixed(3),
+          weight: w.toFixed(3), // CORRECTED: Now using item weight directly
         });
-        putWeightOnFirst = false;
       });
     });
 

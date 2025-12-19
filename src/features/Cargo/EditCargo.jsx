@@ -3,9 +3,6 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { Toaster, toast } from "react-hot-toast";
-
-// Icons
-import { BsFillBoxSeamFill } from "react-icons/bs";
 import { RiFileList2Line } from "react-icons/ri";
 import { FiSend, FiUserCheck, FiFileText } from "react-icons/fi";
 import { FaUserPlus } from "react-icons/fa";

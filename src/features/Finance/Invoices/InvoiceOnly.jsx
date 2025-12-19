@@ -436,13 +436,17 @@ export default function InvoiceOnly({ shipment: injected = null, modal = false }
             ""
           );
 
+          const city = isSender
+        ? pick(shipment, ["sender_city", "shipper_city"], "")
+        : pick(shipment, ["receiver_city", "consignee_city"], "");
+
       return extractParty({
         id: null,
         name: name || "—",
         email,
         contact_number: phone,
         address,
-        city: "",
+        city: city,
         postal_code: "",
         district: "",
         state: "",
@@ -952,13 +956,29 @@ export default function InvoiceOnly({ shipment: injected = null, modal = false }
                   </div>
                 </div>
 
-                <div className="flex items-start">
+             <div className="flex items-start">
                   <div className="invoice-parties-label w-20 shrink-0 text-slate-700">
                     No. of Pcs
                   </div>
                   <div className="mx-1">:</div>
                   <div className="invoice-parties-text">
                     {computePieces(shipment)}
+                  </div>
+
+                  {/* Added City to the right */}
+                  <div className="ml-4 flex items-start">
+                    <div className="invoice-parties-label text-slate-700 font-medium">
+                      City
+                    </div>
+                    <div className="mx-1">:</div>
+                    <div className="invoice-parties-text font-semibold">
+                      {senderParty?.city ||
+                        pick(
+                          shipment,
+                          ["sender_city", "shipper_city", "sender.city"],
+                          "—"
+                        )}
+                    </div>
                   </div>
                 </div>
 

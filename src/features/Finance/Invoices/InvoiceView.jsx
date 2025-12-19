@@ -32,7 +32,7 @@ const pickPhoneFromBranch = (b) => {
   if (!b) return "—";
   return [b.branch_contact_number, b.branch_alternative_number]
     .filter(Boolean)
-    .join(" / ");
+    .join(" | ");
 };
 
 // Safe numeric picker from multiple paths (no "—" fallback)
@@ -242,16 +242,18 @@ const matchByNameAndPhone = (name, phone, list) => {
   );
 };
 
-const buildTrackUrl = (shipment) => {
-  const base = "https://gulfcargoksa.com/trackorder/";
-  const track = getTrackCode(shipment);
-  const box =
-    shipment?.box_no || shipment?.booking_no || shipment?.invoice_no || "";
-  const params = new URLSearchParams();
-  if (track) params.set("code", track);
-  if (box) params.set("box", String(box));
-  params.set("src", "qr");
-  return params.toString() ? `${base}?${params.toString()}` : base;
+// Extracts only the number part from invoice string (removes prefixes like RUH-)
+const getCleanInvoiceNo = (raw) => {
+  if (!raw) return "";
+  // Match the last continuous sequence of digits at the end of the string
+  const match = String(raw).match(/(\d+)$/);
+  return match ? match[1] : raw;
+};
+
+// Build QR Code URL with the specific format requested
+const buildTrackingQrUrl = (invoiceNo) => {
+  const cleanNo = getCleanInvoiceNo(invoiceNo);
+  return `https://gulfcargoksa.com/Orderdetails/shipment/?invoice=${cleanNo}`;
 };
 
 const buildQrUrl = (url, size = 160) =>
@@ -336,7 +338,15 @@ export default function InvoiceView({
   const [branch, setBranch] = useState(null);
 
   const loggedInUser = useMemo(() => getLoggedInUser(), []);
-  const trackUrl = buildTrackUrl(shipment);
+  
+  // Calculate billNo for use in URL
+  const billNo = useMemo(
+    () => shipment?.booking_no ?? shipment?.invoice_no ?? "—",
+    [shipment]
+  );
+  
+  // Construct the new QR URL
+  const qrTargetUrl = buildTrackingQrUrl(billNo);
 
   useEffect(() => {
     const hydratedBranch = location.state?.branch || null;
@@ -412,10 +422,8 @@ export default function InvoiceView({
       const isSender = role === "sender";
 
       // 1. TRUST THE SHIPMENT OBJECT FIRST if it's already fully populated
-      // This prevents bad lookups if we already have the data from CreateCargo
       const directObj = isSender ? shipment.sender : shipment.receiver;
       if (directObj && typeof directObj === 'object' && directObj.id) {
-          // Verify it matches the ID we expect
           const expectedId = isSender ? shipment.sender_id : shipment.receiver_id;
           if (!expectedId || String(directObj.id) === String(expectedId)) {
              return extractParty(directObj);
@@ -466,13 +474,13 @@ export default function InvoiceView({
             : typeId === 2 || typeName.includes("receiver");
         });
 
-        // Determine specific phone from shipment to ensure we pick the correct "Nikhil"
+        // Determine specific phone from shipment
         const specificPhone = isSender
          ? pick(shipment, ["sender_phone", "shipper_phone", "sender_mobile"], "")
          : pick(shipment, ["receiver_phone", "consignee_phone", "receiver_mobile"], "");
 
         const chosen =
-          matchByNameAndPhone(name, specificPhone, roleFiltered) || // Match specific phone first
+          matchByNameAndPhone(name, specificPhone, roleFiltered) || 
           matchByNameAndPhone(name, specificPhone, list) ||
           roleFiltered[0] ||
           list[0] ||
@@ -535,7 +543,6 @@ export default function InvoiceView({
 
     let alive = true;
     (async () => {
-      // Fetch all parties once to avoid multiple lookups by name
       const allParties = parsePartyList(await getParties().catch(() => []));
       const [sp, rp] = await Promise.all([
         fetchParty("sender", allParties),
@@ -553,11 +560,6 @@ export default function InvoiceView({
 
   /* --------------- normalized basics --------------- */
   const currency = DEFAULT_CURRENCY;
-
-  const billNo = useMemo(
-    () => shipment?.booking_no ?? shipment?.invoice_no ?? "—",
-    [shipment]
-  );
 
   /** Build Box Rows (robust) */
   const boxRows = useMemo(() => {
@@ -602,6 +604,14 @@ export default function InvoiceView({
 
   /** Items grid */
   const items = useMemo(() => {
+    // Robust weight picker - prioritize direct property
+    const getW = (it) => {
+        if (it?.weight !== undefined && it?.weight !== null && String(it.weight).trim() !== "") {
+            return it.weight;
+        }
+        return pick(it, ["weight_kg", "unit_weight", "item_weight", "total_weight", "gross_weight"], "");
+    };
+
     const hasBoxes =
       shipment?.boxes && Object.keys(coerceBoxes(shipment.boxes)).length > 0;
     if (hasBoxes) {
@@ -622,6 +632,7 @@ export default function InvoiceView({
             idx: runningIndex++,
             name: it?.name ?? it?.description ?? "Item",
             qty,
+            weight: getW(it),
             boxLabel:
               labelByKey[String(it?.box_number ?? it?.box_no ?? k)] ??
               `B${Number(k) || String(k)}`,
@@ -652,6 +663,7 @@ export default function InvoiceView({
           "Item"
         ),
         qty,
+        weight: getW(it),
         boxLabel,
       };
     });
@@ -749,15 +761,13 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
   paginatedItems.push(items.slice(i, i + ROWS_PER_PAGE));
 }
 
-
-
   return (
     <div className="min-h-screen bg-slate-50">
       <style>{`
        @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 5mm;
   }
 
   body {
@@ -828,18 +838,11 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
               {/* MIDDLE: QR */}
    <div className="invoice-qrcode flex flex-col items-center justify-center">
   <img
-    src={buildQrUrl(trackUrl, 120)}
+    src={buildQrUrl(qrTargetUrl, 120)}
     alt="Invoice QR"
     className="h-28 w-28 rounded bg-white p-1 ring-1 ring-slate-200"
   />
 
-  {/* <div className="tracking-block">
-    Tracking No: <strong>{getTrackCode(shipment) || "—"}</strong>
-    <br />
-    <a href={trackUrl} target="_blank" rel="noopener noreferrer">
-      Track Shipment →
-    </a>
-  </div> */}
 </div>
 
 
@@ -863,7 +866,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
                   </div>
                 </div>
                 <div className="header-invoice-branch-arname">
-                  {s(branch?.branch_name_ar, "شركة سواحل الخليج للنقل البحري")}
+                  {s(branch?.branch_name_ar, "NILL")}
                 </div>
                 <p className="header-invoice-branch-contact mt-1 font-medium text-slate-800">
                   {pickPhoneFromBranch(branch)}
@@ -872,7 +875,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             </div>
 
             <div className="mt-3 grid grid-cols-1 items-center gap-2 rounded bg-rose-600 px-2 py-1 text-white sm:grid-cols-3">
-              <div className="text-xs">
+              <div className="">
                 <div className="invoice-top-header">
                   VAT NO. : {COMPANY.vatNo}
                 </div>
@@ -884,6 +887,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
                     COMPANY.defaultShipmentType
                   )}
                 </div>
+               
               </div>
               <div className="text-center">
                 <div className="invoice-top-header">فاتورة ضريبة مبسطة</div>
@@ -902,226 +906,195 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             </div>
           </div>
 
-          <div
-            className="
-              section-three-bg
-              grid gap-4 border-slate-200 px-1 
-              [grid-template-columns:1fr]
-              md:[grid-template-columns:1.2fr_2fr_1fr]
-            "
-          >
-            {/* SHIPPER (2fr) */}
-            <div className="relative rounded-lg ">
-              <div className=" bg-rose-600 px-1 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white w-25 shrink-0">
+         <div
+  className="
+    section-three-bg
+    grid gap-6 border-slate-200 px-1 py-2
+    grid-cols-1
+    md:grid-cols-[1fr_2fr_1fr]
+    print:grid-cols-[1fr_2fr_1fr]
+    font-bold text-black
+  "
+>
+            {/* SHIPPER */}
+            <div className="flex flex-col rounded-sm bg-white">
+              <div className="bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
                 Shipper
               </div>
 
-              <div className=" text-[10px] mt-2">
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-20 shrink-0 text-slate-700">
-                    Name
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text font-semibold text-slate-900">
+              <div className="flex-1 pt-2 text-[9px] leading-tight space-y-1">
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">Name</div>
+                  <div className="mr-1">:</div>
+                  <div className="font-semibold text-slate-900 break-words flex-1">
                     {getName(senderParty, "sender", shipment) || "—"}
                   </div>
                 </div>
 
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-20 shrink-0 text-slate-700">
-                    ID No
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text">
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">ID No</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1">
                     {senderParty?.document_id ||
-                      pick(
-                        shipment,
-                        ["sender_document_id", "shipper_document_id"],
-                        "—"
-                      )}
+                      pick(shipment, ["sender_document_id", "shipper_document_id"], "—")}
                   </div>
                 </div>
 
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-20 shrink-0 text-slate-700">
-                    Tel
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text">
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">Tel</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1">
                     {getPhone(senderParty, "sender", shipment, pick) || "—"}
                   </div>
                 </div>
 
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-20 shrink-0 text-slate-700">
-                    No. of Pcs
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text">
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">No. of Pcs</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1">
                     {computePieces(shipment, boxRows, items)}
                   </div>
                 </div>
 
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-20 shrink-0 text-slate-700">
-                    Weight
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text">
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">Weight</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1">
                     {totalWeightDisplay} kg
                   </div>
                 </div>
 
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-20 shrink-0 text-slate-700">
-                    Date
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text">
+                 <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">Date</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1">
                     {pickShipmentDate(shipment) || "—"}
                   </div>
                 </div>
+
+                 <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">PAYMENT:{" "}</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1">
+                    {pick(shipment, ["payment_type", "payment_method", "payment_mode"], "—")}
+                  </div>                
+                </div>
+
               </div>
             </div>
 
-            {/* CONSIGNEE (2fr) */}
-            <div className="relative rounded-lg ">
-              <div className=" bg-rose-600 px-1 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white w-25 shrink-0">
+            {/* CONSIGNEE */}
+            <div className="flex flex-col rounded-sm  bg-white">
+              <div className="bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
                 Consignee
               </div>
 
-              <div className="text-[10px] my-2">
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-15 shrink-0 text-slate-700">
-                    Name
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text font-semibold text-slate-900">
+              <div className="flex-1 pt-2 text-[9px] leading-tight space-y-1">
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">Name</div>
+                  <div className="mr-1">:</div>
+                  <div className="font-semibold text-slate-900 break-words flex-1">
                     {getName(receiverParty, "receiver", shipment) || "—"}
                   </div>
                 </div>
 
-                <div className="flex">
-                  <div className="invoice-parties-label w-15 shrink-0 text-slate-700">
-                    Adress
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text whitespace-pre-wrap">
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">Address</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1 whitespace-pre-wrap">
                     {receiverParty?.address_line ||
                       getAddress(receiverParty, "receiver", shipment, pick) ||
                       "—"}
                   </div>
                 </div>
 
-                {/* Post + PIN on one line */}
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-15 shrink-0 text-slate-700">
-                    Post
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text flex flex-wrap items-baseline gap-4">
+                 {/* Post + PIN */}
+                <div className="flex items-baseline">
+                   <div className="w-14 shrink-0 text-slate-600 font-medium">Post</div>
+                   <div className="mr-1">:</div>
+                   <div className="flex flex-wrap items-baseline gap-2 flex-1">
                     <span>
-                      {receiverParty?.post ||
-                        pick(receiverParty?.raw || {}, ["post"], "—")}
+                      {receiverParty?.post || pick(receiverParty?.raw || {}, ["post"], "—")}
                     </span>
-                    <span className="text-slate-700">PIN:</span>
-                    <span className="invoice-parties-text">
+                    <span className="text-slate-500 text-[8px]">PIN:</span>
+                    <span>
                       {receiverParty?.pin ||
-                        pick(
-                          receiverParty?.raw || {},
-                          ["postal_code", "pincode", "zip"],
-                          "—"
-                        )}
+                        pick(receiverParty?.raw || {}, ["postal_code", "pincode", "zip"], "—")}
                     </span>
-                  </div>
+                   </div>
                 </div>
 
-                {/* Dist + State on one line */}
-               <div className="grid grid-cols-3 items-start text-[10px]">
+                {/* Country/State/Dist/City grid */}
+                <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 pt-1">
+                   <div className="flex items-baseline">
+                     <span className="w-10 shrink-0 text-slate-600 font-medium">Country</span>
+                     <span className="mr-1">:</span>
+                     <span className="truncate">
+                        {receiverParty?.country || pick(receiverParty?.raw || {}, ["country"], "—")}
+                     </span>
+                   </div>
+                    <div className="flex items-baseline">
+                     <span className="w-8 shrink-0 text-slate-600 font-medium">State</span>
+                     <span className="mr-1">:</span>
+                     <span className="truncate">
+                        {receiverParty?.state || pick(receiverParty?.raw || {}, ["state"], "—")}
+                     </span>
+                   </div>
+                   <div className="flex items-baseline">
+                     <span className="w-10 shrink-0 text-slate-600 font-medium">Dist</span>
+                     <span className="mr-1">:</span>
+                     <span className="truncate">
+                        {receiverParty?.dist || pick(receiverParty?.raw || {}, ["district"], "—")}
+                     </span>
+                   </div>
+                   <div className="flex items-baseline">
+                     <span className="w-8 shrink-0 text-slate-600 font-medium">City</span>
+                     <span className="mr-1">:</span>
+                     <span className="truncate">
+                        {receiverParty?.city || pick(receiverParty?.raw || {}, ["city"], "—")}
+                     </span>
+                   </div>
+                </div>
 
-  {/* COUNTRY */}
-  <div className="flex items-start gap-1">
-    <span className="text-slate-700 font-semibold">Country</span>
-    <span>:</span>
-    <span>
-      {receiverParty?.country ||
-        pick(receiverParty?.raw || {}, ["country"], "—")}
-    </span>
-  </div>
-
-  {/* DISTRICT */}
-  <div className="flex items-start gap-1">
-    <span className="text-slate-700 font-semibold">Dist</span>
-    <span>:</span>
-    <span>
-      {receiverParty?.dist ||
-        pick(receiverParty?.raw || {}, ["district"], "—")}
-    </span>
-  </div>
-
-  {/* STATE */}
-  <div className="flex items-start gap-1">
-    <span className="text-slate-700 font-semibold">State</span>
-    <span>:</span>
-    <span>
-      {receiverParty?.state ||
-        pick(receiverParty?.raw || {}, ["state"], "—")}
-    </span>
-  </div>
-
-</div>
-
-                          
-                <div className="flex items-start">
-                  <div className="invoice-parties-label w-15 shrink-0 text-slate-700">
-                    Tel
-                  </div>
-                  <div className="mx-1">:</div>
-                  <div className="invoice-parties-text">
+                <div className="flex items-baseline pt-1">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">Tel</div>
+                  <div className="mr-1">:</div>
+                  <div className="break-words flex-1">
                     {getPhone(receiverParty, "receiver", shipment, pick) || "—"}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* BOX SUMMARY (1fr) */}
-            <div className="self-start">
-              <div className="mt-2 ml-auto w-[150px] overflow-hidden ">
-                <table className="text-[11px] ">
-                  <thead className="box-weight-table-header">
-                    <tr className="text-center">
-                      <th className="border border-slate-800 px-2 py-1 w-[30px]">
-                        S.No
-                      </th>
-                      <th className="border border-slate-800 px-2 py-1">
-                        Box No.
-                      </th>
-                      <th className="border border-slate-800 px-2 py-1 w-[65px]">
-                        Weight
-                      </th>
+            {/* BOX SUMMARY */}
+            <div className="flex flex-col">
+               <div className="w-full overflow-hidden border border-slate-300 rounded-sm">
+                <table className="w-full text-[9px] border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 text-center border-b border-slate-300">
+                      <th className="border-r border-slate-300 px-1 py-0.5 font-semibold text-slate-700">Box No.</th>
+                      <th className="border-r border-slate-300 px-1 py-0.5 font-semibold text-slate-700">INV No.</th>
+                      <th className="px-1 py-0.5 font-semibold text-slate-700">Weight</th>
                     </tr>
                   </thead>
-                  <tbody className="box-weight-table-body">
+                  <tbody>
                     {boxRows.length > 0 ? (
                       boxRows.map((row, idx) => (
-                        <tr key={idx} className="text-center">
-                          <td className="border border-slate-800 px-2 py-1">
-                            {row.sl}
+                        <tr key={idx} className="text-center border-b border-slate-200 last:border-0">
+                          <td className="border-r border-slate-200 px-1 py-0.5">
+                            {row.boxNo}
                           </td>
-                          <td className="border border-slate-800 px-2 py-1">
+                          <td className="border-r border-slate-200 px-1 py-0.5">
                             {billNo}
                           </td>
-                          <td className="border border-slate-800 px-2 py-1">
+                          <td className="px-1 py-0.5">
                             {row.weight}
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td
-                          className="border border-slate-800 px-2 py-2 text-center text-slate-500"
-                          colSpan={3}
-                        >
+                        <td className="px-2 py-2 text-center text-slate-400 italic" colSpan={3}>
                           No box weights
                         </td>
                       </tr>
@@ -1162,35 +1135,40 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
         {/* ---------------- LEFT TABLE ---------------- */}
         <table className="items-table w-full table-fixed border-collapse text-[10px] print-avoid">
           <colgroup>
-            <col style={{ width: "55px" }} />
+            <col style={{ width: "30px" }} />
             <col />
-            <col style={{ width: "70px" }} />
+            <col style={{ width: "40px" }} />
+            <col style={{ width: "40px" }} />
             <col style={{ width: "50px" }} />
           </colgroup>
 
           <thead>
             <tr className="text-center">
-              <th className="border border-slate-800">SL NO.</th>
+              <th className="border border-slate-800">SL</th>
               <th className="border border-slate-800 text-left">ITEMS</th>
-              <th className="border border-slate-800">BOX NO.</th>
+              <th className="border border-slate-800">BOX</th>
               <th className="border border-slate-800">QTY</th>
+              <th className="border border-slate-800">WEIGHT</th>
             </tr>
           </thead>
 
           <tbody>
             {leftItems.map((it, idx) => (
               <tr key={`LEFT-${idx}`}>
-                <td className="border border-slate-800 text-center">
+                 <td className="border border-slate-800 text-center">
                   {it.idx}
                 </td>
                 <td className="border border-slate-800 uppercase">
                   {it.name}
                 </td>
-                <td className="border border-slate-800 text-center">
+                 <td className="border border-slate-800 text-center">
                   {it.boxLabel}
                 </td>
                 <td className="border border-slate-800 text-center">
                   {it.qty}
+                </td>
+                <td className="border border-slate-800 text-center">
+                  {it.weight}
                 </td>
               </tr>
             ))}
@@ -1198,6 +1176,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             {/* SAFE FILLERS */}
             {leftFillers.map((_, i) => (
               <tr key={`LEFT-FILL-${i}`}>
+                <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
@@ -1210,35 +1189,40 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
         {/* ---------------- RIGHT TABLE ---------------- */}
         <table className="items-table w-full table-fixed border-collapse text-[10px] print-avoid">
           <colgroup>
-            <col style={{ width: "55px" }} />
+             <col style={{ width: "30px" }} />
             <col />
-            <col style={{ width: "70px" }} />
+            <col style={{ width: "40px" }} />
+            <col style={{ width: "40px" }} />
             <col style={{ width: "50px" }} />
           </colgroup>
 
           <thead>
             <tr className="text-center">
-              <th className="border border-slate-800">SL NO.</th>
+              <th className="border border-slate-800">SL</th>
               <th className="border border-slate-800 text-left">ITEMS</th>
-              <th className="border border-slate-800">BOX NO.</th>
+              <th className="border border-slate-800">BOX</th>
               <th className="border border-slate-800">QTY</th>
+              <th className="border border-slate-800">WEIGHT</th>
             </tr>
           </thead>
 
           <tbody>
             {rightItems.map((it, idx) => (
               <tr key={`RIGHT-${idx}`}>
-                <td className="border border-slate-800 text-center">
+                 <td className="border border-slate-800 text-center">
                   {it.idx}
                 </td>
                 <td className="border border-slate-800 uppercase">
                   {it.name}
                 </td>
-                <td className="border border-slate-800 text-center">
+                 <td className="border border-slate-800 text-center">
                   {it.boxLabel}
                 </td>
                 <td className="border border-slate-800 text-center">
                   {it.qty}
+                </td>
+                 <td className="border border-slate-800 text-center">
+                  {it.weight}
                 </td>
               </tr>
             ))}
@@ -1246,6 +1230,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             {/* SAFE FILLERS */}
             {rightFillers.map((_, i) => (
               <tr key={`RIGHT-FILL-${i}`}>
+                <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
@@ -1259,7 +1244,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr>
               <td
                 className="border border-slate-800 text-right font-medium"
-                colSpan={3}
+                colSpan={4}
               >
                 <div className="flex justify-between">
                   <span>Total</span>
@@ -1274,7 +1259,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr>
               <td
                 className="border border-slate-800 text-right font-medium"
-                colSpan={3}
+                colSpan={4}
               >
                 <div className="flex justify-between">
                   <span>Bill Charges</span>
@@ -1289,7 +1274,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr>
               <td
                 className="border border-slate-800 text-right font-medium"
-                colSpan={3}
+                colSpan={4}
               >
                 <div className="flex justify-between">
                   <span>VAT %</span>
@@ -1304,7 +1289,7 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr className="font-semibold">
               <td
                 className="border border-slate-800 text-right uppercase"
-                colSpan={3}
+                colSpan={4}
               >
                 <div className="flex justify-between">
                   <span>Net Total</span>

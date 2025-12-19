@@ -124,11 +124,17 @@ export default function StaffEdit() {
 
         if (cancel) return;
 
-        setBranches(toList(br));
-        setRoles(toList(rl));
-        setVisas(toList(vs));
-        setDocTypes(toList(dt));
-        setPhoneCodes(toList(pc));
+        const branchList = toList(br);
+        const roleList = toList(rl);
+        const visaList = toList(vs);
+        const docList = toList(dt);
+        const codeList = toList(pc);
+
+        setBranches(branchList);
+        setRoles(roleList);
+        setVisas(visaList);
+        setDocTypes(docList);
+        setPhoneCodes(codeList);
 
         const res = await getStaffById(id);
         const staff = res.user || res; 
@@ -159,18 +165,31 @@ export default function StaffEdit() {
         setSelectedDocType(String(doc.document_type_id || staff.document_type_id || ""));
         setDocumentNumber(doc.document_number || staff.document_number || "");
 
-        // Fix Phone
+        // --- FIX PHONE LOGIC ---
         const fullPhone = staff.contact_number || staff.phone || "";
-        // Attempt to remove code if possible or just set full. 
-        // Ideally we check if phone starts with known code.
-        setContactNumber(fullPhone.replace(/^\+/, '')); 
-        
-        // Default code to 966 if none found, or extract from user if available (logic simplified here)
-        const defaultCode = toList(pc).find(c => extractDial(c) === "+966");
-        if (defaultCode) {
-             setPhoneCodeId(String(getId(defaultCode)));
-             setPhoneCode(extractDial(defaultCode));
+        const normalizedPhone = normalizeCode(fullPhone);
+
+        // Try to match the start of the phone string with one of the available codes
+        // Sort codes by length desc to match longest code first (+971 vs +97)
+        const sortedCodes = [...codeList].sort((a, b) => extractDial(b).length - extractDial(a).length);
+        const matchedCode = sortedCodes.find(c => normalizedPhone.startsWith(extractDial(c)));
+
+        if (matchedCode) {
+            setPhoneCodeId(String(getId(matchedCode)));
+            setPhoneCode(extractDial(matchedCode));
+            // Remove the dial code from the number part
+            setContactNumber(normalizedPhone.slice(extractDial(matchedCode).length));
+        } else {
+            // Default Fallback
+            const defaultCode = codeList.find(c => extractDial(c) === "+966");
+            if (defaultCode) {
+                 setPhoneCodeId(String(getId(defaultCode)));
+                 setPhoneCode(extractDial(defaultCode));
+            }
+            // Just remove leading + if no code matched
+            setContactNumber(fullPhone.replace(/^\+/, '')); 
         }
+        // -----------------------
 
         const avatarUrl = staff.profile_pic || staff.avatar_url;
         if(avatarUrl) setAvatarPreview(avatarUrl);

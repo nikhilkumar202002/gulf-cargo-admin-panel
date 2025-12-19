@@ -25,7 +25,7 @@
   width: 100%;
 
   img {
-    width: 120px;
+    width: 90px;
     height: auto;
   }
 }
@@ -145,11 +145,10 @@
 
 .invoice-weight-text{
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: "Inter";
   padding: 0px 4px;
-  background-color: black;
-  color: white;
+  color: black;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -202,7 +201,7 @@
    font-weight: 600;
 }
 .invoice-top-header{
-  font-size: 13px;
+  font-size: 11px;
   font-family: "Inter";
   font-weight: 600;
 }
@@ -292,7 +291,7 @@
 }
 
 .header-invoice-branch-name{
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700 !important;
   color: var(--secondary-color);
 }
