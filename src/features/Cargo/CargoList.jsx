@@ -1,4 +1,4 @@
-// src/pages/Cargos/AllCargoList.jsx
+// src/features/Cargo/CargoList.jsx
 import React, { useEffect, useState, useCallback } from "react"; 
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux"; 
@@ -175,6 +175,9 @@ export default function AllCargoList() {
   const [totalPages, setTotalPages] = useState(1);
   const perPage = 10;
 
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   useEffect(() => {
     (async () => {
       try {
@@ -194,6 +197,8 @@ export default function AllCargoList() {
     async (currentPage = 1, currentFilter = filter) => {
       setLoading(true);
       setError("");
+      // Reset selection on fetch/page change
+      setSelectedIds(new Set());
       
       const searchParams = {
         page: currentPage,
@@ -311,6 +316,33 @@ export default function AllCargoList() {
     return 0;
   };
 
+  /* Selection Handlers */
+  const toggleSelection = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === cargos.length && cargos.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(cargos.map((c) => c.id)));
+    }
+  };
+
+  /* Report Navigation Handler */
+  const navigateToReport = (reportType) => {
+    if (selectedIds.size === 0) {
+      return toast.error("Please select at least one cargo shipment.");
+    }
+    // Updated to allow multiple
+    navigate(`/reports/${reportType}`, { state: { selectedIds: Array.from(selectedIds) } });
+  };
+
   return (
     <section className="min-h-screen ">
       <Toaster position="top-right" />
@@ -325,11 +357,36 @@ export default function AllCargoList() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+
+           <button 
+              onClick={() => navigateToReport("deliverylist")}
+              className="bg-[#1D6F42] hover:bg-[#145532] text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold transition-colors duration-300"
+            >
+              Delivery List
+            </button>
+            <button 
+              onClick={() => navigateToReport("loadinglist")}
+              className="bg-[#1D6F42] hover:bg-[#145532] text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold transition-colors duration-300"
+            >
+              Loading List
+            </button>
+            <button 
+              onClick={() => navigateToReport("packinglist")}
+              className="bg-[#1D6F42] hover:bg-[#145532] text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold transition-colors duration-300"
+            >
+              Packing List
+            </button>
+            <button 
+              onClick={() => navigateToReport("manifest")}
+              className="bg-[#1D6F42] hover:bg-[#145532] text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold transition-colors duration-300"
+            >
+              Custom Manifest
+            </button>
             <button
               onClick={handleExcelExport}
               className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-rose-700"
             >
-              Export
+              Export List
             </button>
           </div>
         </div>
@@ -378,6 +435,14 @@ export default function AllCargoList() {
             <table className="w-full min-w-[1200px] whitespace-nowrap">
               <thead className="bg-slate-50">
                 <tr className="text-left text-xs font-semibold tracking-wide text-slate-600">
+                  <th className="px-3 py-3 w-10 text-center">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      checked={cargos.length > 0 && selectedIds.size === cargos.length}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
                   <th className="px-3 py-3">Actions</th>
                   <th className="px-3 py-3">Booking No.</th>
                   <th className="px-3 py-3">Branch</th>
@@ -395,13 +460,21 @@ export default function AllCargoList() {
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                 {cargos.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={13} className="px-3 py-8 text-center text-slate-500">
                       No cargos found.
                     </td>
                   </tr>
                 ) : (
                   cargos.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/60">
+                    <tr key={c.id} className={`hover:bg-slate-50/60 ${selectedIds.has(c.id) ? "bg-indigo-50/40" : ""}`}>
+                      <td className="px-3 py-2 text-center">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelection(c.id)}
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <Link
@@ -486,7 +559,6 @@ export default function AllCargoList() {
         onSaved={async () => {
           setEditModalOpen(false);
           await fetchCargos(page, filter);
-          // Removed Invoice Modal auto-open here as requested
         }}
       />
     </section>

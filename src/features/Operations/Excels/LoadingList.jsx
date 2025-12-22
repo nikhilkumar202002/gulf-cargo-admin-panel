@@ -1,6 +1,6 @@
 // src/pages/LoadingList.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment, getCargoById } from "../../../services/cargoService"; // adjust path if needed  // adjust path if needed
 
 /** ===== DEBUG (toggle to false to silence logs) ===== */
@@ -49,6 +49,8 @@ const sumWeight = (items = []) =>
 export default function LoadingList() {
   const { id } = useParams(); // shipment id
   const navigate = useNavigate();
+  const location = useLocation();
+  const stateIds = location.state?.selectedIds;
 
   const [cargoIds, setCargoIds] = useState([]);
   const [cargos, setCargos] = useState([]);
@@ -60,6 +62,18 @@ export default function LoadingList() {
     let alive = true;
     (async () => {
       setLoading(true); setErr("");
+      
+      if (stateIds && stateIds.length > 0) {
+          setCargoIds(stateIds);
+          setLoading(false);
+          return;
+      }
+
+      if (!id) {
+          setLoading(false);
+          return;
+      }
+
       try {
         const res = await getCargoShipment(id);
         const d = res?.data ?? res;
@@ -84,7 +98,7 @@ export default function LoadingList() {
       }
     })();
     return () => { alive = false; };
-  }, [id]);
+  }, [id, stateIds]);
 
   /** 2) For each cargo id, fetch detail (batched to be gentle on the API) */
   useEffect(() => {
@@ -140,7 +154,7 @@ export default function LoadingList() {
           <div>
             <h1 className="text-xl font-semibold text-slate-900">Loading List</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Shipment ID: <span className="font-mono">{id}</span>
+              {id ? <>Shipment ID: <span className="font-mono">{id}</span></> : <span>Selected Cargo List</span>}
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm">

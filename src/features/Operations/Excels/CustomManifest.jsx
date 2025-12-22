@@ -1,6 +1,6 @@
-// src/pages/All Excels/CustomManifest.jsx
+// src/features/Operations/Excels/CustomManifest.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment,getCargoById } from "../../../services/cargoService";
 import { getPartyByIdFlexible, findPartyIdByName } from "../../../services/partyService";
 import * as XLSX from "xlsx";
@@ -44,28 +44,40 @@ const extractItems = (c = {}) => {
   }
   return [];
 };
-const sumPieces = (items = []) =>
-  items.reduce((s, it) => s + Number(it?.piece_no ?? it?.pieces ?? it?.qty ?? 0), 0);
+
+// HELPER: Get Box Count instead of Summing Item Pieces
+const getBoxCount = (c = {}) => {
+  if (c?.no_of_pieces != null && !isNaN(Number(c.no_of_pieces))) return Number(c.no_of_pieces);
+  if (c?.box_count != null && !isNaN(Number(c.box_count))) return Number(c.box_count);
+  if (Array.isArray(c?.boxes)) return c.boxes.length;
+  if (c?.boxes && typeof c.boxes === "object") return Object.keys(c.boxes).length;
+  const items = extractItems(c);
+  if (items.length > 0) {
+    const uniq = new Set(items.map((it) => it?.box_number ?? it?.box_no ?? "1"));
+    return uniq.size || 1;
+  }
+  return 0;
+};
+
 const sumWeight = (items = []) =>
   items.reduce((s, it) => s + Number(it?.weight ?? it?.weight_kg ?? 0), 0);
 const descOfGoods = (items = []) =>
   items
-    .map((it) => `${it?.name ?? it?.item_name ?? "Item"} (${it?.piece_no ?? it?.pieces ?? it?.qty ?? 0})`)
+    .map((it) => `${it?.name ?? it?.item_name ?? "Item"} - ${it?.piece_no ?? it?.pieces ?? it?.qty ?? 0}`)
     .join(", ");
 
-const cleanJoin = (arr) =>
+const cleanJoin = (arr, separator = ", ") =>
   arr
     .filter(truthy)
-    .join(", ")
-    .replace(/\r?\n+/g, ", ")
-    .replace(/\s*,\s*,+/g, ", ")
-    .replace(/,\s*$/g, "")
+    .join(separator)
+    .replace(/\r?\n+/g, separator)
+    .replace(new RegExp(`\\s*${separator.trim()}\\s*${separator.trim()}+`, "g"), separator)
     .trim();
 
 const addressFromParty = (p) => {
   if (!p) return "";
   const line = [p.address, p.address_line1, p.address_line2].filter(truthy).join(", ");
-  return cleanJoin([line, p.city ?? p.district, p.state, p.country, p.postal_code ?? p.pincode]);
+  return cleanJoin([line, p.city ?? p.district, p.state, p.country]);
 };
 const addressFromCargo = (pfx, c = {}) =>
   cleanJoin([
@@ -74,7 +86,6 @@ const addressFromCargo = (pfx, c = {}) =>
     c?.[`${pfx}_district`],
     c?.[`${pfx}_state`],
     c?.[`${pfx}_country`],
-    c?.[`${pfx}_postal_code`] ?? c?.[`${pfx}_pincode`],
   ]);
 
 // Unified phone extractor: works with either a prefix+cargo or a party object
@@ -114,10 +125,36 @@ const intKg = (w) => {
   return String(Math.trunc(n));
 };
 
+/* ------------------------------------------------------------------
+   HELPER: Strip Country Code
+------------------------------------------------------------------ */
+const stripCountryCode = (phone) => {
+  if (!phone) return "";
+  let s = String(phone).replace(/[^0-9]/g, ""); // keep only digits
+  
+  const codes = [
+    "966", "971", "965", "968", "973", "974", // GCC
+    "91", "92", "880", "977", "63", "62", "94", // South/SE Asia
+    "20", "249" // Africa
+  ];
+
+  for (const c of codes) {
+    if (s.startsWith(c)) {
+      if (s.length - c.length >= 7) return s.slice(c.length);
+    }
+    if (s.startsWith("00" + c)) {
+        if (s.length - (c.length + 2) >= 7) return s.slice(c.length + 2);
+    }
+  }
+  return s; 
+};
+
 /* ================= component ================= */
 export default function ShipmentManifest() {
   const { id } = useParams(); // shipment id
   const navigate = useNavigate();
+  const location = useLocation();
+  const stateIds = location.state?.selectedIds;
 
   const [cargoIds, setCargoIds] = useState([]);
   const [cargos, setCargos] = useState([]);
@@ -137,6 +174,20 @@ export default function ShipmentManifest() {
     (async () => {
       setLoading(true);
       setErr("");
+      
+      // PRIORITY: Use IDs from state if available (Bulk Select)
+      if (stateIds && stateIds.length > 0) {
+          setCargoIds(stateIds);
+          setLoading(false);
+          return;
+      }
+
+      // FALLBACK: Use Shipment ID from URL
+      if (!id) {
+          setLoading(false);
+          return;
+      }
+
       try {
         const res = await getCargoShipment(id);
         const d = res?.data ?? res;
@@ -163,7 +214,7 @@ export default function ShipmentManifest() {
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, stateIds]);
 
   /* 2) For each cargo id, fetch detail + try resolve missing sender/receiver IDs by name */
   useEffect(() => {
@@ -325,31 +376,44 @@ export default function ShipmentManifest() {
   /* ================= Export to Excel ================= */
   const buildExportRecord = (c, idx) => {
     const items = extractItems(c);
-    const pieces = sumPieces(items);
+    const boxCount = getBoxCount(c);
     const weightNum = Number(c?.total_weight) || sumWeight(items);
     const weightStr = Number.isFinite(weightNum) ? Math.trunc(weightNum) : weightNum;
 
     const sParty = partyFor("sender", c);
     const rParty = partyFor("receiver", c);
 
+    // --- SHIPPER (Format: Name Phone, BranchAddr, BranchPhone) ---
     const shipperName = sParty?.name ?? c?.sender_name ?? c?.shipper_name ?? "";
-    const shipperAddr = addressFromParty(sParty) || addressFromCargo("sender", c) || "";
-    const { phones: sPhonesArr, whatsapp: sWA } =
-      sParty ? phonesOf(sParty) : phonesOf("sender", c);
-    const shipperPhones = sPhonesArr.join(" / ");
-    const shipperEmail = sParty?.email || c?.sender_email || "";
-    const shipperContactLine = [shipperPhones || "", sWA && `WhatsApp: ${sWA}`, shipperEmail]
-      .filter(truthy)
-      .join(" | ");
+    const { phones: sPhonesArr } = sParty ? phonesOf(sParty) : phonesOf("sender", c);
+    const shipperPhoneNoCode = stripCountryCode(sPhonesArr[0] || "");
+    
+    const branch = c.branch || {};
+    const branchAddr = cleanJoin([
+        branch.address ?? branch.branch_address,
+        branch.city ?? branch.branch_city,
+        branch.state ?? branch.branch_state
+    ]) || "";
+    const branchPhoneNoCode = stripCountryCode(branch.contact_number || branch.branch_contact_number || branch.phone || "");
 
+    const namePart = [shipperName, shipperPhoneNoCode].filter(truthy).join("  ");
+    const fullShipperString = [namePart, branchAddr, branchPhoneNoCode].filter(truthy).join(", ");
+
+    // --- CONSIGNEE (Format: NAME, ADDRESS, PIN code, PHONE numbers) ---
     const consigneeName = rParty?.name ?? c?.receiver_name ?? c?.consignee_name ?? "";
     const consigneeAddr = addressFromParty(rParty) || addressFromCargo("receiver", c) || "";
-    const consigneePin =
+    const pin =
       rParty?.postal_code ??
       rParty?.pincode ??
       c?.receiver_postal_code ??
       c?.receiver_pincode ??
       "";
+    const consigneePin = pin ? `PIN ${pin}` : "";
+    
+    const { phones: rPhonesArr } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
+    const consigneePhones = rPhonesArr.length ? `PHONE ${rPhonesArr.join("/")}` : "";
+
+    const fullConsigneeString = cleanJoin([consigneeName, consigneeAddr, consigneePin, consigneePhones], ", ");
 
     const goods = descOfGoods(items) || "";
     const invoiceValue = c?.invoice_value ?? c?.net_total ?? c?.total_cost ?? "";
@@ -359,12 +423,10 @@ export default function ShipmentManifest() {
     return {
       "Sl No": idx + 1,
       "Booking Number": fmt(c?.booking_no ?? c?.id),
-      "No. of Pieces": fmt(pieces),
+      "No. of Pieces": fmt(boxCount),
       "Weight (kg)": fmt(weightStr),
-      "Shipper Details": [shipperName, shipperAddr, shipperContactLine].filter(truthy).join(" | "),
-      "Consignee Name": fmt(consigneeName),
-      "Consignee Address": fmt(consigneeAddr),
-      "Consignee Pincode": fmt(consigneePin),
+      "Shipper Details": fullShipperString,
+      "Consignee Details": fullConsigneeString, // Consolidated Column
       "Description of Goods (with Qty)": fmt(goods),
       "Invoice Value *": fmt(money(invoiceValue)),
       "GSTIN Type *": fmt(gstinType),
@@ -378,7 +440,7 @@ export default function ShipmentManifest() {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Manifest");
-      XLSX.writeFile(wb, `shipment_${id}_manifest.xlsx`);
+      XLSX.writeFile(wb, `shipment_${id || 'custom'}_manifest.xlsx`);
       info("Excel exported", { rows: data.length });
     } catch (e) {
       errL("Excel export failed", e);
@@ -395,7 +457,7 @@ export default function ShipmentManifest() {
   );
 
   const totalPieces = useMemo(
-    () => rows.reduce((acc, c) => acc + sumPieces(extractItems(c)), 0),
+    () => rows.reduce((acc, c) => acc + getBoxCount(c), 0),
     [rows]
   );
   const totalWeight = useMemo(
@@ -416,7 +478,7 @@ export default function ShipmentManifest() {
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Custom Manifest</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Shipment ID: <span className="font-mono">{id}</span>
+              {id ? <>Shipment ID: <span className="font-mono">{id}</span></> : <span>Selected Cargo List</span>}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -453,10 +515,9 @@ export default function ShipmentManifest() {
               <col className="w-[150px]" />
               <col className="w-[120px]" />
               <col className="w-[120px]" />
-              <col className="w-[480px]" />
-              <col className="w-[380px]" />
-              <col className="w-[140px]" />
-              <col className="w-[420px]" />
+              <col className="w-[450px]" />
+              <col className="w-[450px]" />
+              <col className="w-[200px]" />
               <col className="w-[140px]" />
               <col className="w-[140px]" />
               <col className="w-[180px]" />
@@ -465,12 +526,11 @@ export default function ShipmentManifest() {
             <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
               <tr className="text-left text-slate-700">
                 <th className="px-4 py-3">Sl No</th>
-                <th className="px-4 py-3">Booking #</th>
+                <th className="px-4 py-3">HAWB NO</th>
                 <th className="px-4 py-3 text-right">Pieces</th>
                 <th className="px-4 py-3 text-right">Weight (kg)</th>
                 <th className="px-4 py-3">Shipper Details</th>
                 <th className="px-4 py-3">Consignee Details</th>
-                <th className="px-4 py-3">Consignee Pin</th>
                 <th className="px-4 py-3">Goods (with Qty)</th>
                 <th className="px-4 py-3 text-right">Invoice Value *</th>
                 <th className="px-4 py-3">GSTIN Type *</th>
@@ -482,7 +542,7 @@ export default function ShipmentManifest() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 11 }).map((__, j) => (
+                    {Array.from({ length: 10 }).map((__, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-3.5 w-3/4 rounded bg-slate-200" />
                       </td>
@@ -491,20 +551,20 @@ export default function ShipmentManifest() {
                 ))
               ) : err ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-rose-700">
+                  <td colSpan={10} className="px-4 py-6 text-center text-rose-700">
                     {err}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-600">
+                  <td colSpan={10} className="px-4 py-6 text-center text-slate-600">
                     No cargos found for this shipment.
                   </td>
                 </tr>
               ) : (
                 rows.map((c, idx) => {
                   const items = extractItems(c);
-                  const pieces = sumPieces(items);
+                  const pieces = getBoxCount(c);
                   const weightNum = Number(c?.total_weight) || sumWeight(items);
                   const weightStr = Number.isFinite(weightNum) ? Math.trunc(weightNum) : weightNum;
 
@@ -513,60 +573,52 @@ export default function ShipmentManifest() {
                   const sId = getSenderId(c);
                   const rId = getReceiverId(c);
 
-                  // Shipper
-                  const shipperName =
-                    sParty?.name ?? c?.sender_name ?? c?.shipper_name ?? "—";
-                  const shipperAddr =
-                    addressFromParty(sParty) || addressFromCargo("sender", c) || "—";
-                  const { phones: sPhonesArr, whatsapp: sWA } =
-                    sParty ? phonesOf(sParty) : phonesOf("sender", c);
-                  const shipperPhones = sPhonesArr.join(" / ");
-                  const shipperEmail = sParty?.email || c?.sender_email || "";
+                  // Shipper Display
+                  const shipperName = sParty?.name ?? c?.sender_name ?? c?.shipper_name ?? "—";
+                  const { phones: sPhonesArr } = sParty ? phonesOf(sParty) : phonesOf("sender", c);
+                  const shipperPhone = stripCountryCode(sPhonesArr[0] || "");
+                  
+                  const branch = c.branch || {};
+                  const branchAddr = cleanJoin([
+                      branch.address ?? branch.branch_address,
+                      branch.city ?? branch.branch_city
+                  ]) || "—";
+                  const branchPhone = stripCountryCode(branch.contact_number || branch.branch_contact_number || "");
+
+                  const shipperText = [
+                      `${shipperName}  ${shipperPhone}`,
+                      branchAddr,
+                      branchPhone
+                  ].filter(truthy).join(", ");
 
                   const shipperDetails = (
                     <div className="space-y-1 leading-5">
-                      <div className="font-medium text-slate-900">{fmt(shipperName)}</div>
-                      <div className="text-slate-700">{fmt(shipperAddr)}</div>
-                      <div className="text-xs text-slate-500">
-                        {[shipperPhones || "", sWA && `WhatsApp: ${sWA}`, shipperEmail && `Email: ${shipperEmail}`]
-                          .filter(truthy)
-                          .join(" | ")}
-                      </div>
+                      <div className="text-sm text-slate-800">{fmt(shipperText)}</div>
                     </div>
                   );
 
-                  // Consignee
+                  // Consignee Display
                   const consigneeName =
                     rParty?.name ?? c?.receiver_name ?? c?.consignee_name ?? "—";
                   const consigneeAddr =
                     addressFromParty(rParty) || addressFromCargo("receiver", c) || "—";
-                  const { phones: rPhonesArr, whatsapp: rWA } =
-                    rParty ? phonesOf(rParty) : phonesOf("receiver", c);
-                  const consigneePhones = rPhonesArr.join(" / ");
-                  const consigneeEmail = rParty?.email || c?.receiver_email || "";
-                  const consigneePin =
-                    rParty?.postal_code ??
-                    rParty?.pincode ??
-                    c?.receiver_postal_code ??
-                    c?.receiver_pincode ??
-                    "—";
+                  
+                  const pinRaw = rParty?.postal_code ?? rParty?.pincode ?? c?.receiver_postal_code ?? c?.receiver_pincode;
+                  const consigneePin = pinRaw ? `PIN ${pinRaw}` : "";
+
+                  const { phones: rPhonesArr } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
+                  const consigneePhones = rPhonesArr.length ? `PHONE ${rPhonesArr.join("/")}` : "";
+
+                  // Construct single comma separated string
+                  const consigneeText = cleanJoin([consigneeName, consigneeAddr, consigneePin, consigneePhones], ", ");
 
                   const consigneeDetails = (
                     <div className="space-y-1 leading-5">
-                      <div className="font-medium text-slate-900">{fmt(consigneeName)}</div>
-                      <div className="text-slate-700">{fmt(consigneeAddr)}</div>
-                      <div className="text-xs text-slate-500">
-                        {[consigneePhones || "", rWA && `WhatsApp: ${rWA}`, consigneeEmail && `Email: ${consigneeEmail}`]
-                          .filter(truthy)
-                          .join(" | ")}
-                      </div>
+                      <div className="text-sm text-slate-800">{fmt(consigneeText)}</div>
                     </div>
                   );
 
                   const goods = descOfGoods(items) || "—";
-
-                  const reqText = (v, fmtFn = (x) => x) =>
-                    v || v === 0 ? fmtFn(v) : <span className="text-rose-600">Required</span>;
 
                   return (
                     <tr
@@ -582,9 +634,6 @@ export default function ShipmentManifest() {
                       </td>
                       <td className="px-4 py-3">
                         {partyLoading && truthy(rId) && !rParty ? "Loading…" : consigneeDetails}
-                      </td>
-                      <td className="px-4 py-3">
-                        {partyLoading && truthy(rId) && !rParty ? "Loading…" : fmt(consigneePin)}
                       </td>
                       <td className="px-4 py-3">{fmt(goods)}</td>
                       <td className="px-4 py-3 text-right tabular-nums"></td>
