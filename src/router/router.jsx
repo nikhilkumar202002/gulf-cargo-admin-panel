@@ -221,7 +221,7 @@ const router = createBrowserRouter([
       { path: "shipmentmethod/view", element: <ShipmentMethodView /> },
 
       // { path: "port/create", element: <PortCreate /> },
-      // { path: "port/view", element: <PortView /> },
+      { path: "port/view", element: <PortView /> },
 
       { path: "shipmentstatus/view", element: <ShipmentStatusView /> },
 

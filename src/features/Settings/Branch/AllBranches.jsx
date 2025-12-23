@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { FiSearch, FiEye, FiEdit2, FiTrash2, FiAlertTriangle, FiX } from "react-icons/fi";
+import { FiSearch, FiEye, FiEdit2, FiTrash2 } from "react-icons/fi";
 import toast, { Toaster } from "react-hot-toast";
 
-// --- NEW SERVICE IMPORTS ---
+// --- SERVICE IMPORTS ---
 import { getBranches, deleteBranch } from "../../../services/coreService";
 
 /* ---------------- tiny helpers ---------------- */
@@ -55,59 +55,45 @@ export default function AllBranches() {
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
 
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteInput, setDeleteInput] = useState("");
-
-/* In AllBranches.jsx */
-
-async function loadPage({ pageArg = page, perPageArg = rowsPerPage } = {}) {
-  setLoading(true);
-  setErr("");
-  try {
-    const result = await getBranches({ page: pageArg, per_page: perPageArg });
-    
-    if (result.items && result.meta) {
-      // 1. Valid Server-side pagination
-      setBranches(result.items);
-      setMeta(result.meta);
-    } else if (Array.isArray(result)) {
-      // 2. Array Response Logic
+  async function loadPage({ pageArg = page, perPageArg = rowsPerPage } = {}) {
+    setLoading(true);
+    setErr("");
+    try {
+      const result = await getBranches({ page: pageArg, per_page: perPageArg });
       
-      // FIX: Only slice client-side if the result is larger than the page size.
-      // If result.length <= perPageArg, assume backend already returned just the specific page.
-      if (result.length > perPageArg) {
-        const start = (pageArg - 1) * perPageArg;
-        const pageItems = result.slice(start, start + perPageArg);
-        setBranches(pageItems);
-        setMeta({
-          current_page: pageArg,
-          per_page: perPageArg,
-          total: result.length,
-          last_page: Math.max(1, Math.ceil(result.length / perPageArg)),
-        });
+      if (result.items && result.meta) {
+        setBranches(result.items);
+        setMeta(result.meta);
+      } else if (Array.isArray(result)) {
+        if (result.length > perPageArg) {
+          const start = (pageArg - 1) * perPageArg;
+          const pageItems = result.slice(start, start + perPageArg);
+          setBranches(pageItems);
+          setMeta({
+            current_page: pageArg,
+            per_page: perPageArg,
+            total: result.length,
+            last_page: Math.max(1, Math.ceil(result.length / perPageArg)),
+          });
+        } else {
+          setBranches(result);
+          setMeta({
+            current_page: pageArg,
+            per_page: perPageArg,
+            total: result.length === perPageArg ? (pageArg + 1) * perPageArg : pageArg * perPageArg, 
+            last_page: result.length < perPageArg ? pageArg : pageArg + 1,
+          });
+        }
       } else {
-        // Assume backend handled pagination but returned raw array (no meta)
-        setBranches(result);
-        
-        // We have to guess the meta here because the backend didn't give it to us
-        setMeta({
-          current_page: pageArg,
-          per_page: perPageArg,
-          // If we got a full page, assume there might be more. If less, we are at the end.
-          total: result.length === perPageArg ? (pageArg + 1) * perPageArg : pageArg * perPageArg, 
-          last_page: result.length < perPageArg ? pageArg : pageArg + 1,
-        });
+        setBranches([]);
       }
-    } else {
+    } catch (e) {
+      setErr(e?.message || "Failed to load branches");
       setBranches([]);
+    } finally {
+      setLoading(false);
     }
-  } catch (e) {
-    setErr(e?.message || "Failed to load branches");
-    setBranches([]);
-  } finally {
-    setLoading(false);
   }
-}
 
   useEffect(() => {
     loadPage({ pageArg: page, perPageArg: rowsPerPage });
@@ -125,33 +111,18 @@ async function loadPage({ pageArg = page, perPageArg = rowsPerPage } = {}) {
   const showingFrom = filtered.length ? meta.per_page * (meta.current_page - 1) + 1 : 0;
   const showingTo = meta.per_page * (meta.current_page - 1) + filtered.length;
 
-  const openDeleteModal = (branch) => {
-    setDeleteTarget(branch);
-    setDeleteInput("");
-  };
+  // --- NEW: HANDLE DELETE LOGIC ---
 
-  const closeDeleteModal = () => {
-    setDeleteTarget(null);
-    setDeleteInput("");
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    const expectedName = deleteTarget.branch_name || "DELETE";
-    if (deleteInput !== expectedName) {
-      toast.error("Validation failed. Name mismatch.");
-      return;
-    }
-
+  // 1. Logic to run when "Yes" is clicked
+  const executeDelete = async (branchId) => {
     const currentFilteredCount = filtered.length;
-    const branchId = deleteTarget.id;
-    closeDeleteModal();
-
-    // Use deleteBranch from service
+    
     const deletePromise = deleteBranch(branchId)
       .then(async () => {
+        // Calculate pagination adjustment
         const willBeEmpty = currentFilteredCount === 1 && meta.current_page > 1;
         const nextPage = willBeEmpty ? Math.max(1, meta.current_page - 1) : meta.current_page;
+        
         if (page !== nextPage) setPage(nextPage);
         else await loadPage({ pageArg: nextPage, perPageArg: rowsPerPage });
       });
@@ -163,34 +134,45 @@ async function loadPage({ pageArg = page, perPageArg = rowsPerPage } = {}) {
     });
   };
 
+  // 2. The Toast UI with Buttons
+  const confirmDeleteToast = (branch) => {
+    toast((t) => (
+      <div className="flex flex-col gap-2">
+        <div className="text-sm font-medium text-gray-900">
+          Delete <b>{branch.branch_name}</b>?
+        </div>
+        <div className="flex gap-2 mt-1">
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+              executeDelete(branch.id);
+            }}
+            className="bg-red-600 text-white text-xs px-3 py-1.5 rounded-md hover:bg-red-700 transition-colors"
+          >
+            Yes, Delete
+          </button>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="bg-gray-100 text-gray-700 text-xs px-3 py-1.5 rounded-md hover:bg-gray-200 border transition-colors"
+          >
+            No, Cancel
+          </button>
+        </div>
+      </div>
+    ), { 
+      duration: 4000, // Give them time to decide
+      icon: '⚠️',
+      style: {
+        border: '1px solid #E5E7EB',
+      },
+    });
+  };
+
   return (
     <div className="min-h-screen flex items-start justify-center">
       <Toaster position="top-right" />
 
-      {/* DELETE MODAL */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <FiAlertTriangle className="text-red-500" /> Confirm Deletion
-              </h3>
-              <button onClick={closeDeleteModal} className="text-gray-400 hover:text-gray-600"><FiX size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-600">Are you sure you want to delete <span className="font-bold text-gray-900">{deleteTarget.branch_name}</span>?</p>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Type <span className="text-blue-600 select-all">"{deleteTarget.branch_name || "DELETE"}"</span> to confirm</label>
-                <input type="text" value={deleteInput} onChange={(e) => setDeleteInput(e.target.value)} placeholder={deleteTarget.branch_name || "DELETE"} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all" autoFocus />
-              </div>
-            </div>
-            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
-              <button onClick={closeDeleteModal} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={confirmDelete} disabled={deleteInput !== (deleteTarget.branch_name || "DELETE")} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">Delete Branch</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* --- MODAL REMOVED HERE --- */}
 
       <div className="w-full bg-white rounded-2xl shadow-sm">
         {/* Header */}
@@ -250,7 +232,14 @@ async function loadPage({ pageArg = page, perPageArg = rowsPerPage } = {}) {
                         <div className="flex items-center gap-2">
                           <Link to={`/branch/viewbranch/${b.id}`} className="px-2 py-1.5 rounded border hover:bg-gray-50 text-sm"><FiEye className="text-gray-700" /></Link>
                           <Link to={`/branches/edit/${b.id}`} className="px-2 py-1.5 rounded border hover:bg-gray-50 text-sm"><FiEdit2 className="text-gray-700" /></Link>
-                          <button onClick={() => openDeleteModal(b)} className="px-2 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm" disabled={loading}><FiTrash2 /></button>
+                          {/* UPDATED DELETE BUTTON */}
+                          <button 
+                            onClick={() => confirmDeleteToast(b)} 
+                            className="px-2 py-1.5 rounded border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm" 
+                            disabled={loading}
+                          >
+                            <FiTrash2 />
+                          </button>
                         </div>
                       </td>
                     </tr>
