@@ -1,4 +1,4 @@
-// src/pages/.../SenderForm.jsx
+// src/features/CRM/forms/SenderForm.jsx
 import React from "react";
 import { Toaster, toast } from "react-hot-toast";
 
@@ -16,7 +16,6 @@ import {
   getDocId,
   getDocLabel,
   getDialCode,
-  withPlus,
   composeE164,
   useSelectDigitTypeahead,
 } from "../../../utils/senderFormHelper";
@@ -24,7 +23,7 @@ import {
 const CUSTOMER_TYPE_SENDER = 1;
 const fieldBase =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 outline-none ring-emerald-500 focus:ring";
-const fieldDisabled = "disabled:cursor-not-allowed disabled:bg-slate-50";
+const fieldDisabled = "disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500";
 
 export default function SenderForm({ onClose, onCreated }) {
   const [branchId, setBranchId] = React.useState("");
@@ -36,13 +35,17 @@ export default function SenderForm({ onClose, onCreated }) {
 
   const [phoneCodes, setPhoneCodes] = React.useState([]);
   const [phoneCodesLoading, setPhoneCodesLoading] = React.useState(true);
-  const [phoneCodesError, setPhoneCodesError] = React.useState("");
 
-  const [contactCode, setContactCode] = React.useState("+966");
+  // Phone Codes State (Initialized without +)
+  const [contactCode, setContactCode] = React.useState("966");
+  const [whatsappCode, setWhatsappCode] = React.useState("966");
+  
+  const [isWhatsappSame, setIsWhatsappSame] = React.useState(false);
 
   const [form, setForm] = React.useState({
     name: "",
     contactNumber: "",
+    whatsappNumber: "", 
     senderIdType: "",
     senderId: "",
     documents: [],
@@ -52,85 +55,82 @@ export default function SenderForm({ onClose, onCreated }) {
   const [submitLoading, setSubmitLoading] = React.useState(false);
   const [submitError, setSubmitError] = React.useState("");
 
-/* ---------------- Profile ---------------- */
-React.useEffect(() => {
-  (async () => {
-    try {
-      // Fetch profile and other initial data in parallel
-      const [profileRes, docsRes, codesRes] = await Promise.all([
-        getProfile(),
-        getDocumentTypes({ per_page: 1000 }),
-        getPhoneCodes({ per_page: 1000 }),
-      ]);
+  /* ---------------- Profile ---------------- */
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const [profileRes, docsRes, codesRes] = await Promise.all([
+          getProfile(),
+          getDocumentTypes({ per_page: 1000 }),
+          getPhoneCodes({ per_page: 1000 }),
+        ]);
 
-      // Process profile and branch
-      const profileData = profileRes?.data?.user || profileRes?.user || profileRes?.data || profileRes || {};
-      const branchDetails = profileData?.branch || profileData?.branch_details || {};
-      const profileBranchId = branchDetails?.id || profileData?.branch_id || profileData?.branchId || "";
-      const profileBranchName = branchDetails?.branch_name || branchDetails?.name || "Branch";
+        const profileData = profileRes?.data?.user || profileRes?.user || profileRes?.data || profileRes || {};
+        const branchDetails = profileData?.branch || profileData?.branch_details || {};
+        const profileBranchId = branchDetails?.id || profileData?.branch_id || profileData?.branchId || "";
+        const profileBranchName = branchDetails?.branch_name || branchDetails?.name || "Branch";
 
-      setBranchId(String(profileBranchId));
-      setBranchName(profileBranchName || (profileBranchId ? `Branch #${profileBranchId}` : ""));
+        setBranchId(String(profileBranchId));
+        setBranchName(profileBranchName || (profileBranchId ? `Branch #${profileBranchId}` : ""));
 
-      // Set city from profile if available, then fetch full branch details to refine it
-      const initialCity = branchDetails?.branch_location || branchDetails?.location || branchDetails?.city || "Riyadh";
-      setForm((f) => ({ ...f, city: initialCity }));
+        const initialCity = branchDetails?.branch_location || branchDetails?.location || branchDetails?.city || "Riyadh";
+        setForm((f) => ({ ...f, city: initialCity }));
 
-      if (profileBranchId) {
-        getBranchByIdSmart(profileBranchId)
-          .then(branchRes => {
-            const branchData = branchRes?.data || branchRes || {};
-            const branchLocation = branchData?.branch_location || branchData?.location || branchData?.city || initialCity;
-            setForm((f) => ({ ...f, city: branchLocation }));
-          })
-          .catch(err => console.error("❌ Failed to fetch branch details:", err));
+        if (profileBranchId) {
+          getBranchByIdSmart(profileBranchId)
+            .then(branchRes => {
+              const branchData = branchRes?.data || branchRes || {};
+              const branchLocation = branchData?.branch_location || branchData?.location || branchData?.city || initialCity;
+              setForm((f) => ({ ...f, city: branchLocation }));
+            })
+            .catch(err => console.error("❌ Failed to fetch branch details:", err));
+        }
+
+        setDocTypes(normalizeList(docsRes));
+        setDocsLoading(false);
+
+        setPhoneCodes(Array.isArray(codesRes) ? codesRes : []);
+        setPhoneCodesLoading(false);
+
+      } catch (err) {
+        console.error("❌ Failed to fetch profile/branch:", err);
+        setBranchId("");
+        setBranchName("");
+        setForm((f) => ({ ...f, city: "Riyadh" }));
+        setDocsError("Failed to load document types.");
+        setDocsLoading(false);
+        setPhoneCodesLoading(false);
       }
+    })();
+  }, []);
 
-      // Process document types
-      setDocTypes(normalizeList(docsRes));
-      setDocsLoading(false);
-
-      // Process phone codes
-      setPhoneCodes(Array.isArray(codesRes) ? codesRes : []);
-      setPhoneCodesLoading(false);
-
-    } catch (err) {
-      console.error("❌ Failed to fetch profile/branch:", err);
-      setBranchId("");
-      setBranchName("");
-      setForm((f) => ({ ...f, city: "Riyadh" }));
-      setDocsError("Failed to load document types.");
-      setPhoneCodesError("Failed to load phone codes.");
-      setDocsLoading(false);
-      setPhoneCodesLoading(false);
+  /* ---------------- Sync WhatsApp Logic ---------------- */
+  React.useEffect(() => {
+    if (isWhatsappSame) {
+      setContactCode(whatsappCode);
+      setForm((prev) => ({ ...prev, contactNumber: prev.whatsappNumber }));
     }
-  })();
-}, []);
-
-
-  /* ---------------- Document Types ---------------- */
-  React.useEffect(() => {
-  }, []);
-
-  /* ---------------- Phone Codes ---------------- */
-  React.useEffect(() => {
-  }, []);
+  }, [isWhatsappSame, whatsappCode, form.whatsappNumber]);
 
   /* ---------------- Helpers ---------------- */
   const allDialCodes = React.useMemo(() => {
     const raw = (Array.isArray(phoneCodes) ? phoneCodes : [])
       .map(getDialCode)
-      .map(withPlus)
+      .map(c => c.replace(/^\+/, '')) // Remove leading +
       .filter(Boolean);
     const uniq = Array.from(new Set(raw));
-    if (uniq.length === 0) return ["+966"];
+    
+    if (uniq.length === 0) return ["966"];
+    
     const rest = uniq
-      .filter((c) => c !== "+966")
-      .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
-    return uniq.includes("+966") ? ["+966", ...rest] : rest;
+      .filter((c) => c !== "966")
+      .sort((a, b) => Number(a) - Number(b));
+      
+    return uniq.includes("966") ? ["966", ...rest] : rest;
   }, [phoneCodes]);
 
-  const codeTypeahead = useSelectDigitTypeahead(allDialCodes, setContactCode);
+  const contactCodeTypeahead = useSelectDigitTypeahead(allDialCodes, setContactCode);
+  const whatsappCodeTypeahead = useSelectDigitTypeahead(allDialCodes, setWhatsappCode);
 
   const onChange = (e) => {
     const { name, value, files } = e.target;
@@ -141,11 +141,25 @@ React.useEffect(() => {
     setForm((f) => ({ ...f, [name]: value }));
   };
 
+  const toggleWhatsappSame = (e) => {
+    const checked = e.target.checked;
+    setIsWhatsappSame(checked);
+    if (checked) {
+      setContactCode(whatsappCode);
+      setForm((f) => ({ ...f, contactNumber: f.whatsappNumber }));
+    }
+  };
+
   const buildPayload = () => {
+    // Re-add '+' for E.164 compliance when sending to API
+    const safeContactCode = contactCode.startsWith('+') ? contactCode : `+${contactCode}`;
+    const safeWhatsappCode = whatsappCode.startsWith('+') ? whatsappCode : `+${whatsappCode}`;
+
     const map = {
       customer_type_id: CUSTOMER_TYPE_SENDER,
       name: form.name,
-      contact_number: composeE164(contactCode, form.contactNumber),
+      contact_number: composeE164(safeContactCode, form.contactNumber),
+      whatsapp_number: composeE164(safeWhatsappCode, form.whatsappNumber),
       document_type_id: form.senderIdType ? Number(form.senderIdType) : "",
       document_id: form.senderId,
       branch_id: branchId ? Number(branchId) : "",
@@ -183,11 +197,13 @@ React.useEffect(() => {
       setForm({
         name: "",
         contactNumber: "",
+        whatsappNumber: "",
         senderIdType: "",
         senderId: "",
         documents: [],
-        city: form.city, // Preserve the original city from the profile
+        city: form.city, 
       });
+      setIsWhatsappSame(false);
       setFileKey((k) => k + 1);
       if (typeof onClose === "function") onClose();
     } catch (err) {
@@ -233,8 +249,8 @@ React.useEffect(() => {
           </h3>
         </header>
 
-        {/* Name + Phone + City */}
-        <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-4">
+        {/* Name + City */}
+        <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Name <span className="text-rose-600">*</span>
@@ -246,39 +262,6 @@ React.useEffect(() => {
               className={fieldBase}
               placeholder="Full name"
             />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Phone
-            </label>
-            <div className="grid grid-cols-[120px,1fr] gap-2">
-              {phoneCodesLoading ? (
-                <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
-              ) : (
-                <select
-                  value={contactCode}
-                  onChange={(e) => setContactCode(e.target.value)}
-                  onKeyDown={codeTypeahead.onKeyDown}
-                  className={`${fieldBase} ${fieldDisabled}`}
-                  disabled={phoneCodesLoading}
-                >
-                  {allDialCodes.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <input
-                name="contactNumber"
-                value={form.contactNumber}
-                onChange={onChange}
-                className={fieldBase}
-                inputMode="numeric"
-                placeholder="501234567"
-              />
-            </div>
           </div>
 
           <div>
@@ -295,8 +278,98 @@ React.useEffect(() => {
           </div>
         </div>
 
-        {/* ID Type + Document ID + Uploads (optional now) */}
-        <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
+        {/* WhatsApp + Contact (Swapped Order) */}
+        <div className="grid grid-cols-1 gap-5 px-4 pb-4 md:grid-cols-2 border-b border-slate-100 mb-4">
+          
+          {/* 1. WhatsApp Number (Now First) */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              WhatsApp Number
+            </label>
+            <div className="grid grid-cols-[90px,1fr] gap-2">
+              {phoneCodesLoading ? (
+                <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
+              ) : (
+                <select
+                  value={whatsappCode}
+                  onChange={(e) => setWhatsappCode(e.target.value)}
+                  onKeyDown={whatsappCodeTypeahead.onKeyDown}
+                  className={`${fieldBase} ${fieldDisabled}`}
+                  disabled={phoneCodesLoading}
+                >
+                  {allDialCodes.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input
+                name="whatsappNumber"
+                value={form.whatsappNumber}
+                onChange={onChange}
+                className={fieldBase}
+                inputMode="numeric"
+                placeholder="501234567"
+              />
+            </div>
+            {/* Checkbox */}
+            <div className="mt-2 flex items-center">
+              <input
+                id="wa_same"
+                type="checkbox"
+                checked={isWhatsappSame}
+                onChange={toggleWhatsappSame}
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              <label htmlFor="wa_same" className="ml-2 text-xs font-medium text-slate-600 cursor-pointer select-none">
+                Use as Contact Number
+              </label>
+            </div>
+          </div>
+
+          {/* 2. Contact Number (Now Second) */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Contact Number
+            </label>
+            <div className="grid grid-cols-[90px,1fr] gap-2">
+              {phoneCodesLoading ? (
+                <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
+              ) : (
+                <select
+                  value={contactCode}
+                  onChange={(e) => setContactCode(e.target.value)}
+                  onKeyDown={contactCodeTypeahead.onKeyDown}
+                  className={`${fieldBase} ${fieldDisabled}`}
+                  disabled={phoneCodesLoading || isWhatsappSame}
+                >
+                  {allDialCodes.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input
+                name="contactNumber"
+                value={form.contactNumber}
+                onChange={onChange}
+                className={`${fieldBase} ${isWhatsappSame ? 'bg-slate-50 text-slate-500' : ''}`}
+                inputMode="numeric"
+                placeholder="501234567"
+                readOnly={isWhatsappSame}
+              />
+            </div>
+            {isWhatsappSame && (
+              <p className="mt-1 text-xs text-indigo-600">Synced from WhatsApp</p>
+            )}
+          </div>
+
+        </div>
+
+        {/* ID Type + Document ID + Uploads */}
+        <div className="grid grid-cols-1 gap-5 px-4 pb-4 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               ID Type

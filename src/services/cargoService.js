@@ -13,14 +13,21 @@ export const listCargos = async (params = {}) => {
 
 export const getCargoById = async (id) => {
   if (!id) throw new Error("Cargo ID is required");
-  // Try plural first, then singular fallback
+  
+  // FIX: Try SINGULAR "/cargo/:id" first (matches create/update endpoints)
   try {
-      const res = await api.get(`/cargos/${id}`);
-      return res?.data?.data ?? res?.data?.cargo ?? unwrap(res);
-  } catch (e) {
-      // Fallback to singular endpoint if plural 404s
       const res = await api.get(`/cargo/${id}`);
       return res?.data?.data ?? res?.data?.cargo ?? unwrap(res);
+  } catch (e) {
+      // Fallback to plural if singular fails (only if your API is inconsistent)
+      try {
+        const res = await api.get(`/cargos/${id}`);
+        return res?.data?.data ?? res?.data?.cargo ?? unwrap(res);
+      } catch (e2) {
+        // If both fail, throw the original error or null
+        console.error("Failed to fetch cargo by ID:", id);
+        throw e;
+      }
   }
 };
 
@@ -51,6 +58,14 @@ export const bulkUpdateCargoStatus = updateCargoStatus;
 
 export const listCargoShipments = async (params = {}) => {
   const res = await api.get("/cargo-shipments", { params });
+  return unwrap(res);
+};
+
+export const filterCargosByBookingNo = async (bookingNo) => {
+  // Assuming the API expects the booking number as a query parameter 'booking_no'
+  const res = await api.get("/cargos/filter-by-booking-no", { 
+    params: { booking_no: bookingNo } 
+  });
   return unwrap(res);
 };
 
