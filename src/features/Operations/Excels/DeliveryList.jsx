@@ -1,7 +1,7 @@
-// src/pages/DeliveryList.jsx
+// src/features/Operations/Excels/DeliveryList.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { getCargoShipment,getCargoById } from "../../../services/cargoService";
+import { getCargoShipment, getCargoById } from "../../../services/cargoService";
 import { getPartyByIdFlexible, findPartyIdByName } from "../../../services/partyService";
 import * as XLSX from "xlsx";
 
@@ -45,8 +45,26 @@ const extractItems = (c = {}) => {
   }
   return [];
 };
-const sumPieces = (items = []) =>
-  items.reduce((s, it) => s + Number(it?.piece_no ?? it?.pieces ?? it?.qty ?? 0), 0);
+
+// FIX: Calculate Box Count
+const getBoxCount = (c = {}) => {
+  // 1. Check explicit box_count field first
+  if (c?.box_count != null && !isNaN(Number(c.box_count))) return Number(c.box_count);
+
+  // 2. Count the structure of boxes (Array or Object)
+  if (Array.isArray(c?.boxes)) return c.boxes.length;
+  if (c?.boxes && typeof c.boxes === "object") return Object.keys(c.boxes).length;
+
+  // 3. Fallback: Count unique box numbers defined in items
+  const items = extractItems(c);
+  if (items.length > 0) {
+    const uniq = new Set(items.map((it) => String(it?.box_number ?? it?.box_no ?? "1")));
+    return uniq.size || 1;
+  }
+  
+  return 0;
+};
+
 const sumWeight = (items = []) =>
   items.reduce((s, it) => s + Number(it?.weight ?? it?.weight_kg ?? 0), 0);
 
@@ -83,13 +101,24 @@ const consigneeState = (c = {}, party = null) =>
   c.consignee_state ??
   "";
 
-/** If boxes exist, list their keys; else fall back to booking_no */
+/** FIX: List keys if boxes exist; else default to empty/dash (removed booking_no fallback) */
 const boxNumberDisplay = (c = {}) => {
   if (c?.boxes && typeof c.boxes === "object") {
+    // If it's an object of boxes (key = box number)
     const keys = Object.keys(c.boxes).sort((a, b) => Number(a) - Number(b));
     if (keys.length) return keys.join(", ");
   }
-  return c?.booking_no ?? c?.bookingNo ?? "—";
+  
+  // If no boxes object, check items for unique box numbers
+  const items = extractItems(c);
+  if (items.length > 0) {
+     const uniq = new Set(items.map(it => it?.box_number ?? it?.box_no).filter(truthy));
+     if (uniq.size > 0) {
+         return Array.from(uniq).sort((a, b) => Number(a) - Number(b)).join(", ");
+     }
+  }
+
+  return "—"; 
 };
 
 /** IDs must come from the cargo detail */
@@ -289,7 +318,7 @@ export default function DeliveryList() {
   /** ===== Excel export ===== */
   const buildExportRow = (c, idx) => {
     const items = extractItems(c);
-    const pieces = sumPieces(items);
+    const pieces = getBoxCount(c); // FIX: Use box count
 
     const weightRaw = Number(c?.total_weight);
     const weight = Number.isFinite(weightRaw) ? weightRaw : sumWeight(items);
@@ -408,7 +437,9 @@ export default function DeliveryList() {
               ) : (
                 rows.map((c, idx) => {
                   const items = extractItems(c);
-                  const pieces = sumPieces(items);
+                  
+                  // FIX 1: Use getBoxCount instead of sumPieces
+                  const pieces = getBoxCount(c);
 
                   const weightRaw = Number(c?.total_weight);
                   const weight = Number.isFinite(weightRaw) ? weightRaw : sumWeight(items);
@@ -418,6 +449,8 @@ export default function DeliveryList() {
 
                   const address = consigneeAddress(c, rParty);
                   const state = consigneeState(c, rParty);
+                  
+                  // FIX 2: Use boxNumberDisplay helper
                   const boxNo = boxNumberDisplay(c);
 
                   return (
@@ -435,7 +468,8 @@ export default function DeliveryList() {
                       <td className="px-4 py-3">
                         {partyLoading && truthy(getReceiverId(c)) && !rParty ? "Loading…" : fmt(state)}
                       </td>
-                      <td className="px-4 py-3">{fmt(c?.booking_no ?? c?.id)}</td>
+                      {/* FIX 3: Display actual box numbers */}
+                      <td className="px-4 py-3">{fmt(boxNo)}</td>
                     </tr>
                   );
                 })

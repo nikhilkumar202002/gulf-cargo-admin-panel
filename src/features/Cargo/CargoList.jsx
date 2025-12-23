@@ -63,8 +63,8 @@ export default function AllCargoList() {
   const [totalCargos, setTotalCargos] = useState(0);
   
   // Loading States
-  const [isInitialLoading, setIsInitialLoading] = useState(true); // For Skeleton
-  const [isFetching, setIsFetching] = useState(false); // For background updates
+  const [isInitialLoading, setIsInitialLoading] = useState(true); 
+  const [isFetching, setIsFetching] = useState(false); 
   
   const [filter, setFilter] = useState({ bookingNo: "", branchId: "" });
   const [page, setPage] = useState(1);
@@ -93,22 +93,17 @@ export default function AllCargoList() {
 
   // --- Fetch Cargos Logic ---
   const fetchCargos = useCallback(async (currPage, currFilter) => {
-    // Only show Skeleton if we have NO data yet (Initial Mount)
     if (cargos.length === 0) setIsInitialLoading(true);
-    else setIsFetching(true); // Background loading indicator if needed
+    else setIsFetching(true); 
 
     try {
       let response;
       let fetched = [];
 
-      // 1. USE FILTER API if Booking No is present
       if (currFilter.bookingNo) {
         response = await filterCargosByBookingNo(currFilter.bookingNo);
-        // Note: The specific filter API might return a direct array or standard paginated response.
-        // We handle both via unwrapArray logic.
         fetched = unwrapArray(response);
       } 
-      // 2. USE STANDARD LIST API otherwise
       else {
         const searchParams = {
           page: currPage,
@@ -127,13 +122,12 @@ export default function AllCargoList() {
 
     } catch (err) {
       console.error("Fetch error:", err);
-      // toast.error("Failed to load data"); // Optional: prevent toast spam on typing
-      if (cargos.length === 0) setCargos([]); // Clear only if initial load failed
+      if (cargos.length === 0) setCargos([]); 
     } finally {
       setIsInitialLoading(false);
       setIsFetching(false);
     }
-  }, [cargos.length]); // Depend on cargos.length to determine initial loading state
+  }, [cargos.length]); 
 
   // Debounce Effect
   useEffect(() => {
@@ -162,9 +156,18 @@ export default function AllCargoList() {
      toast.success("Export started in background...");
   };
 
-  const navigateToReport = (type) => {
+  // --- FIXED: Updated paths to match router.jsx exactly ---
+  const reportLinks = [
+    { label: "Delivery List", path: "deliverylist" }, // router: "reports/deliverylist"
+    { label: "Loading List", path: "loadinglist" },   // router: "reports/loadinglist"
+    { label: "Packing List", path: "packinglist" },   // router: "reports/packinglist"
+    { label: "Custom Manifest", path: "manifest" },   // router: "reports/manifest"
+  ];
+
+  const navigateToReport = (path) => {
     if (selectedIds.size === 0) return toast.error("Select items first");
-    navigate(`/reports/${type}`, { state: { selectedIds: Array.from(selectedIds) } });
+    // navigate to /reports/manifest, /reports/packinglist, etc.
+    navigate(`/reports/${path}`, { state: { selectedIds: Array.from(selectedIds) } });
   };
 
   return (
@@ -182,13 +185,14 @@ export default function AllCargoList() {
           </div>
           
           <div className="flex flex-wrap gap-2">
-            {["Delivery List", "Loading List", "Packing List", "Custom Manifest"].map((name) => (
+            {/* Using the fixed reportLinks array */}
+            {reportLinks.map((item) => (
               <button 
-                key={name}
-                onClick={() => navigateToReport(name.toLowerCase().replace(" ", ""))}
-                className="bg-emerald-500 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition"
+                key={item.label}
+                onClick={() => navigateToReport(item.path)}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition"
               >
-                {name}
+                {item.label}
               </button>
             ))}
              <button onClick={handleExcelExport} className="bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-black">
@@ -255,7 +259,6 @@ export default function AllCargoList() {
                          </td>
                          <td className="px-4 py-3 font-medium text-indigo-600">
                             {c.booking_no}
-                            {/* Explicitly showing if booking_no acts as Invoice No */}
                          </td>
                          <td className="px-4 py-3 text-slate-600">{c.branch_name || "—"}</td>
                          <td className="px-4 py-3">

@@ -17,6 +17,28 @@ export const rolesMenu = {
   1: [ // Super Admin Menu
     { key: "dashboard", icon: <BiSolidDashboard />, label: "Dashboard", path: "/dashboard" },
     {
+      key: "cargos",
+      icon: <FaBox />,
+      label: "Cargo",
+      submenus: [
+        // { name: "Shipment Report", path: "/shipment/shipmentreport" },
+        { name: "All Cargos", path: "/cargo/allcargolist" },
+        { name: "Create Cargo", path: "/cargoshipment/createcargo" },
+        // { name: "Create Shipment", path: "/shipment/createshipment" },
+      ]
+    },
+      {
+      key: "bills",
+      icon: <LiaFileInvoiceDollarSolid />,
+      label: "Bills",
+      submenus: [
+        { name: "All Bills", path: "/bills/view" },
+        { name: "All Bill Shipments", path: "/bills-shipments/list" },
+        { name: "Create Bills", path: "/bills/create" },
+        { name: "Create Bill Shipment", path: "/bills-shipments/create" },  
+      ]
+    },
+    {
       key: "branch",
       icon: <FaBuilding />,
       label: "Branches",
@@ -34,28 +56,7 @@ export const rolesMenu = {
         { name: "Create Staffs", path: "/hr&staff/createstaffs" },
       ]
     },
-    {
-      key: "cargos",
-      icon: <FaBox />,
-      label: "Cargo",
-      submenus: [
-        { name: "Shipment Report", path: "/shipment/shipmentreport" },
-        { name: "All Cargos", path: "/cargo/allcargolist" },
-        { name: "Create Cargo", path: "/cargoshipment/createcargo" },
-        { name: "Create Shipment", path: "/shipment/createshipment" },
-      ]
-    },
-      {
-      key: "bills",
-      icon: <LiaFileInvoiceDollarSolid />,
-      label: "Bills",
-      submenus: [
-        { name: "All Bills", path: "/bills/view" },
-        { name: "All Bill Shipments", path: "/bills-shipments/list" },
-        { name: "Create Bills", path: "/bills/create" },
-        { name: "Create Bill Shipment", path: "/bills-shipments/create" },  
-      ]
-    },
+    
     {
       key: "sender",
       icon: <RiMailSendFill />,

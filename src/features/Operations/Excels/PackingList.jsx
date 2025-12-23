@@ -1,7 +1,7 @@
-// src/pages/PackingList.jsx
+// src/features/Operations/Excels/PackingList.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { getCargoShipment,getCargoById } from "../../../services/cargoService";   // adjust path if needed
+import { getCargoShipment, getCargoById } from "../../../services/cargoService"; 
 
 /** ================= DEBUG ================= */
 
@@ -43,10 +43,29 @@ const extractItems = (c = {}) => {
   }
   return [];
 };
-const sumPieces = (items = []) =>
-  items.reduce((s, it) => s + Number(it?.piece_no ?? it?.pieces ?? it?.qty ?? 0), 0);
+
+// FIX: Calculate Box Count instead of Sum of Pieces
+const getBoxCount = (c = {}) => {
+  // 1. Check explicit box_count field first
+  if (c?.box_count != null && !isNaN(Number(c.box_count))) return Number(c.box_count);
+
+  // 2. Count the structure of boxes (Array or Object)
+  if (Array.isArray(c?.boxes)) return c.boxes.length;
+  if (c?.boxes && typeof c.boxes === "object") return Object.keys(c.boxes).length;
+
+  // 3. Fallback: Count unique box numbers defined in items
+  const items = extractItems(c);
+  if (items.length > 0) {
+    const uniq = new Set(items.map((it) => String(it?.box_number ?? it?.box_no ?? "1")));
+    return uniq.size || 1;
+  }
+  
+  return 0;
+};
+
 const sumWeight = (items = []) =>
   items.reduce((s, it) => s + Number(it?.weight ?? it?.weight_kg ?? 0), 0);
+
 const descOfGoods = (items = []) =>
   items
     .map((it) => {
@@ -222,7 +241,9 @@ export default function PackingList() {
               ) : (
                 rows.map((c, idx) => {
                   const items = extractItems(c);
-                  const pieces = sumPieces(items);
+                  
+                  // FIX: Use getBoxCount instead of summing item pieces
+                  const pieces = getBoxCount(c);
 
                   // weight: prefer cargo.total_weight, else sum item weights; show without decimals
                   const weightRaw = Number(c?.total_weight);
