@@ -382,8 +382,8 @@ export default function ShipmentManifest() {
 
   /* ================= Render ================= */
   return (
-    <section className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl px-4 py-6">
+    <section className="min-h-screen">
+      <div className="mx-auto w-full">
         {/* Header */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>

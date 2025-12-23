@@ -739,11 +739,6 @@ export default function InvoiceView({
     ])
   );
 
-  const colA = items.slice(0, ROWS_PER_COL);
-  const colB = items.slice(ROWS_PER_COL, ROWS_PER_COL * 2);
-  while (colA.length < ROWS_PER_COL) colA.push(null);
-  while (colB.length < ROWS_PER_COL) colB.push(null);
-
   if (loading)
     return <div className="p-6 text-slate-600">Loading invoice…</div>;
   if (err) return <div className="p-6 text-rose-700">{err}</div>;
@@ -753,13 +748,6 @@ export default function InvoiceView({
   const totalWeightDisplay = toFixed3(
     pick(shipment, ["total_weight", "weight", "gross_weight"], 0)
   );
-
-const ROWS_PER_PAGE = 45;
-
-const paginatedItems = [];
-for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
-  paginatedItems.push(items.slice(i, i + ROWS_PER_PAGE));
-}
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -1114,20 +1102,55 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
   </div>
 
   {(() => {
-    // FIXED: Keep the 45-row total page limit
+    // ----------------- CHANGED: STRUCTURED ITEMS WITH BOX HEADERS -----------------
+    const structuredRows = [];
+    let currentBox = null;
+
+    items.forEach((item) => {
+       const itemBox = item.boxLabel || "Unboxed";
+       // If box changes, add a header row first
+       if(itemBox !== currentBox) {
+         currentBox = itemBox;
+         structuredRows.push({ isHeader: true, title: `Box ${currentBox.replace('B','')}` });
+       }
+       // Add the actual item
+       structuredRows.push(item);
+    });
+
+    // We slice the *structured* rows (headers + items) to respect page limits
     const LEFT_ROWS = 25;
     const RIGHT_ROWS = 20;
 
-    const leftItems = items.slice(0, LEFT_ROWS);
-    const rightItems = items.slice(LEFT_ROWS, LEFT_ROWS + RIGHT_ROWS);
+    const leftRows = structuredRows.slice(0, LEFT_ROWS);
+    const rightRows = structuredRows.slice(LEFT_ROWS, LEFT_ROWS + RIGHT_ROWS);
 
+    // Fillers if needed (just for visual height consistency)
     const leftFillers = Array.from({
-      length: Math.max(0, LEFT_ROWS - leftItems.length),
+      length: Math.max(0, LEFT_ROWS - leftRows.length),
+    });
+    const rightFillers = Array.from({
+      length: Math.max(0, RIGHT_ROWS - rightRows.length),
     });
 
-    const rightFillers = Array.from({
-      length: Math.max(0, RIGHT_ROWS - rightItems.length),
-    });
+    const renderRow = (row, idx, prefix) => {
+        if(row.isHeader) {
+            return (
+                <tr key={`${prefix}-HEAD-${idx}`} className="bg-slate-100">
+                    <td colSpan={4} className="border border-slate-800 px-2 font-bold text-slate-800">
+                        {row.title}
+                    </td>
+                </tr>
+            );
+        }
+        return (
+            <tr key={`${prefix}-${idx}`}>
+                <td className="border border-slate-800 text-center">{row.idx}</td>
+                <td className="border border-slate-800 uppercase pl-2">{row.name}</td>
+                <td className="border border-slate-800 text-center">{row.qty}</td>
+                <td className="border border-slate-800 text-center">{row.weight}</td>
+            </tr>
+        );
+    };
 
     return (
       <div className="grid grid-cols-2 gap-3">
@@ -1138,45 +1161,22 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <col style={{ width: "30px" }} />
             <col />
             <col style={{ width: "40px" }} />
-            <col style={{ width: "40px" }} />
             <col style={{ width: "50px" }} />
           </colgroup>
 
           <thead>
             <tr className="text-center">
               <th className="border border-slate-800">SL</th>
-              <th className="border border-slate-800 text-left">ITEMS</th>
-              <th className="border border-slate-800">BOX</th>
+              <th className="border border-slate-800 text-left pl-2">ITEMS</th>
               <th className="border border-slate-800">QTY</th>
               <th className="border border-slate-800">WEIGHT</th>
             </tr>
           </thead>
 
           <tbody>
-            {leftItems.map((it, idx) => (
-              <tr key={`LEFT-${idx}`}>
-                 <td className="border border-slate-800 text-center">
-                  {it.idx}
-                </td>
-                <td className="border border-slate-800 uppercase">
-                  {it.name}
-                </td>
-                 <td className="border border-slate-800 text-center">
-                  {it.boxLabel}
-                </td>
-                <td className="border border-slate-800 text-center">
-                  {it.qty}
-                </td>
-                <td className="border border-slate-800 text-center">
-                  {it.weight}
-                </td>
-              </tr>
-            ))}
-
-            {/* SAFE FILLERS */}
+            {leftRows.map((row, idx) => renderRow(row, idx, 'LEFT'))}
             {leftFillers.map((_, i) => (
               <tr key={`LEFT-FILL-${i}`}>
-                <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
@@ -1192,45 +1192,22 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
              <col style={{ width: "30px" }} />
             <col />
             <col style={{ width: "40px" }} />
-            <col style={{ width: "40px" }} />
             <col style={{ width: "50px" }} />
           </colgroup>
 
           <thead>
             <tr className="text-center">
               <th className="border border-slate-800">SL</th>
-              <th className="border border-slate-800 text-left">ITEMS</th>
-              <th className="border border-slate-800">BOX</th>
+              <th className="border border-slate-800 text-left pl-2">ITEMS</th>
               <th className="border border-slate-800">QTY</th>
               <th className="border border-slate-800">WEIGHT</th>
             </tr>
           </thead>
 
           <tbody>
-            {rightItems.map((it, idx) => (
-              <tr key={`RIGHT-${idx}`}>
-                 <td className="border border-slate-800 text-center">
-                  {it.idx}
-                </td>
-                <td className="border border-slate-800 uppercase">
-                  {it.name}
-                </td>
-                 <td className="border border-slate-800 text-center">
-                  {it.boxLabel}
-                </td>
-                <td className="border border-slate-800 text-center">
-                  {it.qty}
-                </td>
-                 <td className="border border-slate-800 text-center">
-                  {it.weight}
-                </td>
-              </tr>
-            ))}
-
-            {/* SAFE FILLERS */}
+             {rightRows.map((row, idx) => renderRow(row, idx, 'RIGHT'))}
             {rightFillers.map((_, i) => (
               <tr key={`RIGHT-FILL-${i}`}>
-                <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
                 <td className="border border-slate-800">&nbsp;</td>
@@ -1244,14 +1221,14 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr>
               <td
                 className="border border-slate-800 text-right font-medium"
-                colSpan={4}
+                colSpan={3}
               >
-                <div className="flex justify-between">
+                <div className="flex justify-between px-2">
                   <span>Total</span>
                   <span className="ml-2 text-right">المجموع</span>
                 </div>
               </td>
-              <td className="border border-slate-800 text-right">
+              <td className="border border-slate-800 text-right pr-1">
                 {fmtMoney(subtotal, currency).replace(/[A-Z]{3}\s?/, "").trim()}
               </td>
             </tr>
@@ -1259,14 +1236,14 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr>
               <td
                 className="border border-slate-800 text-right font-medium"
-                colSpan={4}
+                colSpan={3}
               >
-                <div className="flex justify-between">
+                <div className="flex justify-between px-2">
                   <span>Bill Charges</span>
                   <span className="ml-2 text-right">رسوم الفاتورة</span>
                 </div>
               </td>
-              <td className="border border-slate-800 text-right">
+              <td className="border border-slate-800 text-right pr-1">
                 {fmtMoney(bill, currency).replace(/[A-Z]{3}\s?/, "").trim()}
               </td>
             </tr>
@@ -1274,14 +1251,14 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr>
               <td
                 className="border border-slate-800 text-right font-medium"
-                colSpan={4}
+                colSpan={3}
               >
-                <div className="flex justify-between">
+                <div className="flex justify-between px-2">
                   <span>VAT %</span>
                   <span className="ml-2 text-right">ضريبة القيمة المضافة %</span>
                 </div>
               </td>
-              <td className="border border-slate-800 text-right">
+              <td className="border border-slate-800 text-right pr-1">
                 {fmtMoney(tax, currency).replace(/[A-Z]{3}\s?/, "").trim()}
               </td>
             </tr>
@@ -1289,14 +1266,14 @@ for (let i = 0; i < items.length; i += ROWS_PER_PAGE) {
             <tr className="font-semibold">
               <td
                 className="border border-slate-800 text-right uppercase"
-                colSpan={4}
+                colSpan={3}
               >
-                <div className="flex justify-between">
+                <div className="flex justify-between px-2">
                   <span>Net Total</span>
                   <span className="ml-2 text-right">المجموع الصافي</span>
                 </div>
               </td>
-              <td className="border border-slate-800 text-right">
+              <td className="border border-slate-800 text-right pr-1">
                 {fmtMoney(total, currency).replace(/[A-Z]{3}\s?/, "").trim()}
               </td>
             </tr>

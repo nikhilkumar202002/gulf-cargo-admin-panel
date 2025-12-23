@@ -182,11 +182,11 @@ export default function AllCargoList() {
           </div>
           
           <div className="flex flex-wrap gap-2">
-            {["Delivery List", "Loading List", "Packing List", "Manifest"].map((name) => (
+            {["Delivery List", "Loading List", "Packing List", "Custom Manifest"].map((name) => (
               <button 
                 key={name}
                 onClick={() => navigateToReport(name.toLowerCase().replace(" ", ""))}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition"
+                className="bg-emerald-500 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition"
               >
                 {name}
               </button>
