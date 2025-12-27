@@ -1058,103 +1058,96 @@ const softResetForNext = useCallback((branchId, nextInvoiceNo) => {
     };
   }, [invoiceOpen, invoiceShipment?.booking_no]);
 
-  const reloadParties = useCallback(async () => {
-  try {
-    const [sendersRes, receiversRes] = await Promise.all([
-      getPartiesByCustomerType(1),
-      getPartiesByCustomerType(2),
-    ]);
+const reloadParties = useCallback(async () => {
+    try {
+      const [sendersRes, receiversRes] = await Promise.all([
+        getPartiesByCustomerType(1),
+        getPartiesByCustomerType(2),
+      ]);
 
-    const senders = unwrapArray(sendersRes?.data ?? sendersRes);
-    const receivers = unwrapArray(receiversRes?.data ?? receiversRes);
+      const senders = unwrapArray(sendersRes?.data ?? sendersRes);
+      const receivers = unwrapArray(receiversRes?.data ?? receiversRes);
 
-    setOptions((prev) => ({
-      ...prev,
-      senders,
-      receivers,
-    }));
+      // --- FIX 1: Update the Cache so reloads work ---
+      setCache("cargo_senders", senders);
+      setCache("cargo_receivers", receivers);
 
-    // Return fresh data for merging
-    return { senders, receivers };
-  } catch (err) {
-    console.error("reloadParties error:", err);
-    showToast("Failed to refresh parties", "error");
-    return null;
-  }
-}, [showToast]);
-
-
-const onPartyCreated = useCallback(
-  async (created, role) => {
-    const newParty =
-      created?.party ||
-      created?.data?.party ||
-      created?.data ||
-      created;
-    if (!newParty?.id) {
-      showToast("Party creation failed — invalid response", "error");
-      return;
-    }
-
-    const newId = String(newParty.id);
-    const normalizedParty = {
-      id: newId,
-      name: newParty.name || newParty.full_name || "Unnamed",
-      address: newParty.address || "",
-      phone: newParty.phone || "",
-      ...newParty,
-    };
-
-    // 1️⃣ Instantly update the local list (before API reload)
-    setOptions((prev) => {
-      const key = role === "sender" ? "senders" : "receivers";
-      const list = prev[key] || [];
-      const already = list.some((p) => String(p.id) === newId);
-      if (already) return prev;
-
-      return {
-        ...prev,
-        [key]: [normalizedParty, ...list],
-      };
-    });
-
-    // 2️⃣ Instantly select and show its info
-    updateForm((draft) => {
-      if (role === "sender") {
-        draft.senderId = newId;
-        draft.senderAddress = normalizedParty.address;
-        draft.senderPhone = normalizedParty.phone;
-      } else {
-        draft.receiverId = newId;
-        draft.receiverAddress = normalizedParty.address;
-        draft.receiverPhone = normalizedParty.phone;
-      }
-    });
-
-    // 3️⃣ Close the right modal
-    if (role === "sender") setSenderOpen(false);
-    else setReceiverOpen(false);
-
-    showToast(
-      `${role === "sender" ? "Sender" : "Receiver"} added successfully.`,
-      "success"
-    );
-
-    // 4️⃣ Merge with fresh data (instead of overwriting)
-    const refreshed = await reloadParties();
-    if (refreshed) {
       setOptions((prev) => ({
         ...prev,
-        [role === "sender" ? "senders" : "receivers"]: [
-          normalizedParty,
-          ...(refreshed[role === "sender" ? "senders" : "receivers"] || []),
-        ],
+        senders,
+        receivers,
       }));
-    }
-  },
-  [reloadParties, updateForm, showToast, setOptions]
-);
 
+      return { senders, receivers };
+    } catch (err) {
+      console.error("reloadParties error:", err);
+      showToast("Failed to refresh parties", "error");
+      return null;
+    }
+  }, [showToast]); // Remove setCache from dependencies as it is likely stable or non-dep
+
+const onPartyCreated = useCallback(
+    async (created, role) => {
+      const newParty =
+        created?.party ||
+        created?.data?.party ||
+        created?.data ||
+        created;
+      if (!newParty?.id) {
+        showToast("Party creation failed — invalid response", "error");
+        return;
+      }
+
+      const newId = String(newParty.id);
+      const normalizedParty = {
+        id: newId,
+        name: newParty.name || newParty.full_name || "Unnamed",
+        address: newParty.address || "",
+        phone: newParty.phone || "",
+        ...newParty,
+      };
+
+      // 1️⃣ Optimistic Update: Instantly show it in the list so the UI feels fast
+      setOptions((prev) => {
+        const key = role === "sender" ? "senders" : "receivers";
+        const list = prev[key] || [];
+        // Prevent duplicate if user clicks fast, though unlikely here
+        if (list.some((p) => String(p.id) === newId)) return prev;
+
+        return {
+          ...prev,
+          [key]: [normalizedParty, ...list],
+        };
+      });
+
+      // 2️⃣ Instantly select it in the form
+      updateForm((draft) => {
+        if (role === "sender") {
+          draft.senderId = newId;
+          draft.senderAddress = normalizedParty.address;
+          draft.senderPhone = normalizedParty.phone;
+        } else {
+          draft.receiverId = newId;
+          draft.receiverAddress = normalizedParty.address;
+          draft.receiverPhone = normalizedParty.phone;
+        }
+      });
+
+      // 3️⃣ Close the modal
+      if (role === "sender") setSenderOpen(false);
+      else setReceiverOpen(false);
+
+      showToast(
+        `${role === "sender" ? "Sender" : "Receiver"} added successfully.`,
+        "success"
+      );
+
+      // 4️⃣ Background Refresh (FIX 2: Just call reload. Do NOT merge manually again)
+      // The reloadParties function now updates the state AND the cache correctly.
+      await reloadParties(); 
+    },
+    [reloadParties, updateForm, showToast, setOptions]
+  );
 // Total Boxes
 const totalBoxes = boxes.length;
 

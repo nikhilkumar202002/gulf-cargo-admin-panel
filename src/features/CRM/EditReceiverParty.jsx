@@ -2,10 +2,10 @@ import React from "react";
 import { Toaster, toast } from "react-hot-toast";
 
 import { getProfile } from "../../services/authService";
-import { getCountries, getStatesByCountry, getDistrictsByState,getPhoneCodes,getDocumentTypes } from "../../services/coreService";
+import { getCountries, getStatesByCountry, getDistrictsByState, getPhoneCodes, getDocumentTypes } from "../../services/coreService";
 import { updateParty } from "../../services/partyService";
 
-/* Helpers – same as ReceiverForm */ // :contentReference[oaicite:2]{index=2}
+/* Helpers – same as ReceiverForm */
 import {
   normalizeList,
   getDocId,
@@ -26,13 +26,10 @@ const fieldDisabled = "disabled:cursor-not-allowed disabled:bg-slate-50";
 
 /**
  * Splits an E.164 number into a country code and local number.
- * @param {string} value The full phone number (e.g., "+966501234567").
- * @param {string[]} codeListDigits A list of valid country codes (e.g., ["966", "91", "1"]).
- * @returns {{code: string, local: string} | null}
  */
 function splitE164(value, codeListDigits) {
   if (!value) return null;
-  const s = String(value).replace(/\D/g, ""); // "966501234567"
+  const s = String(value).replace(/\D/g, ""); 
   if (!s) return null;
 
   for (const code of codeListDigits) {
@@ -40,10 +37,9 @@ function splitE164(value, codeListDigits) {
       return { code, local: s.substring(code.length) };
     }
   }
-  return null; // No matching code found
+  return null; 
 }
 
-/* helper copied from ReceiverForm */
 function detectCodeFromFreeText(value, codeListDigits) {
   if (!value) return null;
   let s = String(value).trim().replace(/\s+/g, "");
@@ -79,7 +75,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
   const [stateError, setStateError] = React.useState("");
   const [districtError, setDistrictError] = React.useState("");
 
-  /* phone codes (digits only in UI) */
+  /* phone codes */
   const [phoneCodes, setPhoneCodes] = React.useState([]);
   const [phoneCodesLoading, setPhoneCodesLoading] = React.useState(true);
   const [phoneCodesError, setPhoneCodesError] = React.useState("");
@@ -107,7 +103,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
   const [submitLoading, setSubmitLoading] = React.useState(false);
   const [submitError, setSubmitError] = React.useState("");
 
-  /* profile (branch) – same logic as create, uses current user’s branch */
+  /* profile (branch) */
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -125,9 +121,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         setBranchName("");
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   /* docs */
@@ -148,9 +142,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         if (alive) setDocsLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   /* phone codes */
@@ -171,12 +163,10 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         if (alive) setPhoneCodesLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
-  /* build code list like ["966","91","1", ...]; keep 966 first */
+  /* build code list */
   const phoneCodeOptions = React.useMemo(() => {
     const raw = (phoneCodes || []).map(getDialCode).map(onlyDigits).filter(Boolean);
     const uniq = Array.from(new Set(raw));
@@ -219,7 +209,6 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
       address: initialParty.address || "",
     }));
 
-    // If numbers are the same, check the "use same" box
     if (initialParty.whatsapp_number && initialParty.whatsapp_number === initialParty.contact_number) {
       setForm(prev => ({ ...prev, useSameForContact: true }));
     }
@@ -246,9 +235,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         if (alive) setCountryLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   /* states */
@@ -265,26 +252,11 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         setStateError("");
         setStates([]);
         const raw = await getStatesByCountry(toApiId(form.country), { per_page: 1000 });
-        const all =
-          Array.isArray(raw)
-            ? raw
-            : Array.isArray(raw?.states)
-            ? raw.states
-            : Array.isArray(raw?.data?.data)
-            ? raw.data.data
-            : Array.isArray(raw?.data)
-            ? raw.data
-            : Array.isArray(raw?.items)
-            ? raw.items
-            : normalizeList(raw);
-
+        const all = normalizeList(raw);
         const countryIdStr = String(toApiId(form.country));
         const filtered = (all || []).filter(
-          (s) =>
-            String(s.country_id ?? s.countryId ?? s?.country?.id ?? s?.country?._id) ===
-            countryIdStr
+          (s) => String(s.country_id ?? s.countryId ?? s?.country?.id ?? s?.country?._id) === countryIdStr
         );
-
         if (!alive) return;
         setStates(filtered);
       } catch (e) {
@@ -295,9 +267,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         if (alive) setStateLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [form.country]);
 
   /* districts */
@@ -312,26 +282,12 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         setDistrictLoading(true);
         setDistrictError("");
         setDistricts([]);
-
         const raw = await getDistrictsByState(toApiId(form.state), { per_page: 1000 });
-        const all =
-          Array.isArray(raw)
-            ? raw
-            : Array.isArray(raw?.districts)
-            ? raw.districts
-            : Array.isArray(raw?.data?.data)
-            ? raw.data.data
-            : Array.isArray(raw?.data)
-            ? raw.data
-            : Array.isArray(raw?.items)
-            ? raw.items
-            : normalizeList(raw);
-
+        const all = normalizeList(raw);
         const stateIdStr = String(toApiId(form.state));
         const filtered = (all || []).filter(
           (d) => String(d.state_id ?? d.stateId ?? d?.state?.id ?? d?.state?._id) === stateIdStr
         );
-
         if (!alive) return;
         setDistricts(filtered);
       } catch (e) {
@@ -342,9 +298,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         if (alive) setDistrictLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [form.state]);
 
   /* general change handler */
@@ -378,9 +332,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
   React.useEffect(() => {
     if (!form.country || !phoneCodes.length) return;
     const countryId = toApiId(form.country);
-    const phoneCode = phoneCodes.find(
-      (p) => String(p.country_id) === String(countryId)
-    );
+    const phoneCode = phoneCodes.find(p => String(p.country_id) === String(countryId));
     if (phoneCode) {
       const digits = onlyDigits(getDialCode(phoneCode));
       setWhatsappCode(digits);
@@ -435,7 +387,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
     }
   };
 
-  /* payload */
+  /* payload & submit */
   const buildPayload = () => {
     const map = {
       customer_type_id: CUSTOMER_TYPE_RECEIVER,
@@ -468,9 +420,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name) {
-      return setSubmitError("Receiver name is required.");
-    }
+    if (!form.name) return setSubmitError("Receiver name is required.");
     try {
       setSubmitLoading(true);
       const payload = buildPayload();
@@ -488,8 +438,12 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
     }
   };
 
+  // --- CHANGED: Added max-h and overflow-y-auto to form ---
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
+    <form 
+      onSubmit={handleSubmit} 
+      className="space-y-8 max-h-[85vh] overflow-y-auto px-1"
+    >
       <Toaster position="top-right" />
 
       {/* Branch (read-only) */}
@@ -527,9 +481,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
           {/* Country */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Country
-            </label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Country</label>
             {countryLoading ? (
               <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
             ) : (
@@ -543,27 +495,19 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
                 className={`${fieldBase} ${fieldDisabled}`}
                 disabled={countryLoading}
               >
-                <option value="">
-                  {countryLoading ? "Loading..." : "Select Country"}
-                </option>
+                <option value="">{countryLoading ? "Loading..." : "Select Country"}</option>
                 {!countryLoading &&
                   countries.map((c) => (
-                    <option key={getId(c)} value={getId(c)}>
-                      {labelOf(c)}
-                    </option>
+                    <option key={getId(c)} value={getId(c)}>{labelOf(c)}</option>
                   ))}
               </select>
             )}
-            {countryError && (
-              <p className="mt-1 text-sm text-rose-700">{countryError}</p>
-            )}
+            {countryError && <p className="mt-1 text-sm text-rose-700">{countryError}</p>}
           </div>
 
           {/* State */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              State
-            </label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">State</label>
             {stateLoading ? (
               <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
             ) : (
@@ -578,31 +522,20 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
                 disabled={!form.country || stateLoading}
               >
                 <option value="">
-                  {!form.country
-                    ? "Select Country fi..."
-                    : stateLoading
-                    ? "Loading..."
-                    : "Select State"}
+                  {!form.country ? "Select Country fi..." : stateLoading ? "Loading..." : "Select State"}
                 </option>
-                {!stateLoading &&
-                  form.country &&
+                {!stateLoading && form.country &&
                   states.map((s) => (
-                    <option key={getId(s)} value={getId(s)}>
-                      {labelOf(s)}
-                    </option>
+                    <option key={getId(s)} value={getId(s)}>{labelOf(s)}</option>
                   ))}
               </select>
             )}
-            {stateError && (
-              <p className="mt-1 text-sm text-rose-700">{stateError}</p>
-            )}
+            {stateError && <p className="mt-1 text-sm text-rose-700">{stateError}</p>}
           </div>
 
           {/* District */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              District
-            </label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">District</label>
             {districtLoading ? (
               <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
             ) : (
@@ -614,82 +547,39 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
                 disabled={!form.state || districtLoading}
               >
                 <option value="">
-                  {!form.state
-                    ? "Select State fi..."
-                    : districtLoading
-                    ? "Loading..."
-                    : "Select District"}
+                  {!form.state ? "Select State fi..." : districtLoading ? "Loading..." : "Select District"}
                 </option>
-                {!districtLoading &&
-                  form.state &&
+                {!districtLoading && form.state &&
                   districts.map((d) => (
-                    <option key={getId(d)} value={getId(d)}>
-                      {labelOf(d)}
-                    </option>
+                    <option key={getId(d)} value={getId(d)}>{labelOf(d)}</option>
                   ))}
               </select>
             )}
-            {districtError && (
-              <p className="mt-1 text-sm text-rose-700">{districtError}</p>
-            )}
+            {districtError && <p className="mt-1 text-sm text-rose-700">{districtError}</p>}
           </div>
         </div>
 
         {/* City / Post / Postal Code */}
         <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              City
-            </label>
-            <input
-              name="city"
-              value={form.city}
-              onChange={onChange}
-              className={fieldBase}
-              placeholder="Enter city"
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">City</label>
+            <input name="city" value={form.city} onChange={onChange} className={fieldBase} placeholder="Enter city" />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Post
-            </label>
-            <input
-              name="post"
-              value={form.post}
-              onChange={onChange}
-              className={fieldBase}
-              placeholder="Post office / locality"
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Post</label>
+            <input name="post" value={form.post} onChange={onChange} className={fieldBase} placeholder="Post office / locality" />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Postal Code
-            </label>
-            <input
-              name="postal_code"
-              value={form.postal_code}
-              onChange={onChange}
-              className={fieldBase}
-              inputMode="numeric"
-              placeholder="PIN / ZIP"
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Postal Code</label>
+            <input name="postal_code" value={form.postal_code} onChange={onChange} className={fieldBase} inputMode="numeric" placeholder="PIN / ZIP" />
           </div>
         </div>
 
         {/* Address */}
         <div className="grid grid-cols-1 gap-5 px-4 pb-5 md:grid-cols-3">
           <div className="md:col-span-3">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Address
-            </label>
-            <textarea
-              name="address"
-              value={form.address}
-              onChange={onChange}
-              className={fieldBase}
-              rows={3}
-              placeholder="House / Building, Street"
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Address</label>
+            <textarea name="address" value={form.address} onChange={onChange} className={fieldBase} rows={3} placeholder="House / Building, Street" />
           </div>
         </div>
       </div>
@@ -700,9 +590,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
           <div className="grid h-7 w-7 place-items-center rounded-md bg-slate-900 text-[11px] font-semibold text-white">
             2
           </div>
-          <h3 className="text-sm font-semibold text-slate-900">
-            Receiver Identity
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-900">Receiver Identity</h3>
         </header>
 
         <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
@@ -711,24 +599,13 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Name <span className="text-rose-600">*</span>
             </label>
-            <input
-              name="name"
-              value={form.name}
-              onChange={onChange}
-              className={fieldBase}
-              placeholder="Full name"
-              aria-describedby="name_help"
-            />
-            <p id="name_help" className="mt-1 text-xs text-slate-500">
-              As per ID / official records.
-            </p>
+            <input name="name" value={form.name} onChange={onChange} className={fieldBase} placeholder="Full name" aria-describedby="name_help" />
+            <p id="name_help" className="mt-1 text-xs text-slate-500">As per ID / official records.</p>
           </div>
 
           {/* WhatsApp */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              WhatsApp Number
-            </label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">WhatsApp Number</label>
             <div className="grid grid-cols-[120px,1fr] gap-2">
               {phoneCodesLoading ? (
                 <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
@@ -741,44 +618,21 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
                   disabled={phoneCodesLoading}
                   title="Tip: focus here and type digits like 91 to jump to 91"
                 >
-                  {phoneCodeOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
+                  {phoneCodeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
-              <input
-                type="tel"
-                name="whatsappNumber"
-                value={form.whatsappNumber}
-                onChange={handleWaChange}
-                onPaste={handleWaPaste}
-                className={fieldBase}
-                inputMode="numeric"
-                placeholder="501234567"
-                autoComplete="tel"
-              />
+              <input type="tel" name="whatsappNumber" value={form.whatsappNumber} onChange={handleWaChange} onPaste={handleWaPaste} className={fieldBase} inputMode="numeric" placeholder="501234567" autoComplete="tel" />
             </div>
-            {phoneCodesError && (
-              <p className="mt-1 text-xs text-rose-700">{phoneCodesError}</p>
-            )}
+            {phoneCodesError && <p className="mt-1 text-xs text-rose-700">{phoneCodesError}</p>}
             <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                name="useSameForContact"
-                checked={form.useSameForContact}
-                onChange={onChange}
-              />
+              <input type="checkbox" name="useSameForContact" checked={form.useSameForContact} onChange={onChange} />
               Use same for Contact Number
             </label>
           </div>
 
           {/* Contact */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Contact Number
-            </label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Contact Number</label>
             <div className="grid grid-cols-[120px,1fr] gap-2">
               {phoneCodesLoading ? (
                 <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
@@ -791,25 +645,10 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
                   disabled={phoneCodesLoading || form.useSameForContact}
                   title="Tip: focus here and type digits like 91 to jump to 91"
                 >
-                  {phoneCodeOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
+                  {phoneCodeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
-              <input
-                type="tel"
-                name="contactNumber"
-                value={form.contactNumber}
-                onChange={handleContactChange}
-                onPaste={handleContactPaste}
-                className={fieldBase}
-                inputMode="numeric"
-                placeholder="501234567"
-                readOnly={form.useSameForContact}
-                autoComplete="tel"
-              />
+              <input type="tel" name="contactNumber" value={form.contactNumber} onChange={handleContactChange} onPaste={handleContactPaste} className={fieldBase} inputMode="numeric" placeholder="501234567" readOnly={form.useSameForContact} autoComplete="tel" />
             </div>
           </div>
         </div>
@@ -817,71 +656,35 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
         <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
           {/* ID Type */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              ID Type
-            </label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">ID Type</label>
             {docsLoading ? (
               <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
             ) : (
-              <select
-                name="receiverIdType"
-                value={String(form.receiverIdType || "")}
-                onChange={onChange}
-                className={`${fieldBase} ${fieldDisabled}`}
-                disabled={docsLoading}
-              >
-                <option value="">
-                  {docsLoading ? "Loading..." : "Select ID Type"}
-                </option>
-                {docTypes.map((d) => (
-                  <option key={getDocId(d)} value={getDocId(d)}>
-                    {getDocLabel(d)}
-                  </option>
-                ))}
+              <select name="receiverIdType" value={String(form.receiverIdType || "")} onChange={onChange} className={`${fieldBase} ${fieldDisabled}`} disabled={docsLoading}>
+                <option value="">{docsLoading ? "Loading..." : "Select ID Type"}</option>
+                {docTypes.map((d) => <option key={getDocId(d)} value={getDocId(d)}>{getDocLabel(d)}</option>)}
               </select>
             )}
-            {docsError && (
-              <p className="mt-1 text-sm text-rose-700">{docsError}</p>
-            )}
+            {docsError && <p className="mt-1 text-sm text-rose-700">{docsError}</p>}
           </div>
 
           {/* ID Number */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Document ID
-            </label>
-            <input
-              name="receiverId"
-              value={form.receiverId}
-              onChange={onChange}
-              className={fieldBase}
-              placeholder="Document number"
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Document ID</label>
+            <input name="receiverId" value={form.receiverId} onChange={onChange} className={fieldBase} placeholder="Document number" />
           </div>
 
           {/* Uploads */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Upload Documents
-            </label>
-            <input
-              key={fileKey}
-              type="file"
-              name="documents"
-              accept="image/*,.pdf"
-              multiple
-              onChange={onChange}
-              className={fieldBase}
-            />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Upload Documents</label>
+            <input key={fileKey} type="file" name="documents" accept="image/*,.pdf" multiple onChange={onChange} className={fieldBase} />
           </div>
         </div>
       </div>
 
-      {/* actions */}
-      <div className="flex items-center justify-end gap-3">
-        {submitError && (
-          <p className="mr-auto text-sm text-rose-700">{submitError}</p>
-        )}
+      {/* --- CHANGED: Actions are now Sticky at the Bottom --- */}
+      <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-slate-200 bg-white py-4 pr-1">
+        {submitError && <p className="mr-auto text-sm text-rose-700">{submitError}</p>}
         <button
           type="button"
           onClick={onClose}
@@ -893,9 +696,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
           type="submit"
           disabled={submitLoading}
           className={`rounded-lg px-5 py-2 text-white transition ${
-            submitLoading
-              ? "cursor-not-allowed bg-rose-400"
-              : "bg-rose-600 hover:bg-rose-700"
+            submitLoading ? "cursor-not-allowed bg-rose-400" : "bg-rose-600 hover:bg-rose-700"
           }`}
         >
           {submitLoading ? "Updating…" : "Update"}

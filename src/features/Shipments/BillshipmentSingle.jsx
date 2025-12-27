@@ -21,6 +21,13 @@ const statusMap = {
   13: "Enquiry collected",
   14: "Transfer",
   15: "DELIVERED",
+  16: "REACHED WAREHOUSE",
+  17: "IN TRANSIT",
+  18: "ARIVAL FOR CLEARANCE", // Kept exact spelling from JSON
+  19: "CUSTOMS CLEARED",
+  20: "BOOKING IN PROGRESS",
+  21: "DELIVERY IN TRANSIT",
+  22: "ARRIVED AT PORT",
 };
 const formatStatus = (status) => statusMap[status] || status;
 const getStatusStyle = (status) => {
