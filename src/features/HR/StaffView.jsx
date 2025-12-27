@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getStaffById } from "../../services/staffService";
-import { FiArrowLeft, FiEdit2 } from "react-icons/fi";
+import { FiArrowLeft } from "react-icons/fi";
 
 // --- Helpers ---
 const safe = (v, d = "—") => (v === null || v === undefined || v === "" ? d : v);
@@ -30,10 +30,7 @@ const normalize = (raw = {}) => {
     phone: u?.contact_number ?? u?.phone ?? "—",
     avatar: u?.profile_pic ?? "",
     status: u?.status ?? "Inactive",
-    
-    // ✅ Use the helper here
     appointmentDate: formatDate(u?.appointment_date),
-    
     role: u?.role?.name ?? "—",
     branch: u?.branch?.name ?? "—",
     
@@ -142,12 +139,7 @@ export default function StaffView() {
             >
               <FiArrowLeft /> Back
             </button>
-            <button
-              onClick={() => navigate(`/hr/staff/edit/${data.id}`)}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition shadow-sm"
-            >
-              <FiEdit2 /> Edit
-            </button>
+
           </div>
         </div>
 

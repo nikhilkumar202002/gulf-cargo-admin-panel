@@ -1,302 +1,330 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import ReactDOM from "react-dom";
+import { FaTrash, FaBox } from "react-icons/fa";
 
-export const BoxesSection = React.memo(
-  ({
-    boxes,
-    addBox,
-    removeBox,
-    setBoxWeight,
-    addItemToBox,
-    removeItemFromBox,
-    setBoxItem,
-    itemOptions,
-    onItemKeyDown,
-    itemRefs,
-    setFocusTarget,
-  }) => {
-    const handleKeyDown = (e, boxIndex, itemIndex, currentField) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        if (currentField === 'name') {
-          setFocusTarget({ boxIndex, itemIndex, field: 'pieces' });
-        } else if (currentField === 'pieces') {
-          setFocusTarget({ boxIndex, itemIndex, field: 'item_weight' });
-        } else if (currentField === 'item_weight') {
-          addItemToBox(boxIndex);
-          // After adding, focus the name of the *new* item
-          // Note: If addItemToBox was blocked by the 45-item limit, 
-          // this focus might fail or stay on the current field, which is acceptable behavior.
-          setFocusTarget({ boxIndex, itemIndex: itemIndex + 1, field: 'name' });
-        } else {
-          onItemKeyDown(e, boxIndex);
-        }
-      }
+/* --- 1. ITEM AUTOSUGGEST COMPONENT --- */
+const ItemAutosuggest = React.forwardRef(function ItemAutosuggest(
+  { value, onChange, options = [], onKeyDown },
+  ref
+) {
+  const [q, setQ] = useState(value || "");
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  
+  // FIX: Use an internal ref to guarantee we can access the DOM node for positioning
+  const inputRef = useRef(null);
+
+  // Sync internal state with prop
+  useEffect(() => {
+    setQ(value || "");
+  }, [value]);
+
+  // Filter options
+  const filtered = useMemo(() => {
+    const s = (q || "").toLowerCase();
+    if (!s) return options.slice(0, 50);
+    return options.filter((v) => v.toLowerCase().includes(s)).slice(0, 50);
+  }, [q, options]);
+
+  const commit = (val) => {
+    setQ(val);
+    onChange?.(val); // Send selected string to parent
+    setOpen(false);
+    setHighlight(-1);
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      // Use inputRef here
+      if (inputRef.current && inputRef.current.contains(e.target)) return;
+      setOpen(false);
     };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
 
-    return (
-      <div className="space-y-6">
-        
-        {/* --- ADDED: Limit Warning --- */}
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start sm:items-center gap-3">
-           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0 text-amber-600" viewBox="0 0 20 20" fill="currentColor">
-             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-           </svg>
-           <span>
-             <strong>Note:</strong> A maximum of <strong>45 items</strong> can be entered in a single invoice.
-             Please create a new invoice if you have more items.
-           </span>
-        </div>
-        {/* ----------------------------- */}
+  // Render the dropdown via Portal
+  const renderPopup = () => {
+    // FIX: Check inputRef.current instead of ref.current
+    if (!open || !inputRef.current) return null;
+    
+    const rect = inputRef.current.getBoundingClientRect();
+    
+    return ReactDOM.createPortal(
+      <ul
+        role="listbox"
+        className="fixed z-[9999] max-h-60 overflow-auto rounded-md border border-slate-200 bg-white shadow-xl text-left"
+        style={{
+          top: rect.bottom + window.scrollY,
+          left: rect.left + window.scrollX,
+          width: `${rect.width}px`,
+        }}
+      >
+        {filtered.length === 0 ? (
+          <li className="px-3 py-2 text-sm text-slate-500 italic">
+            No matches found
+          </li>
+        ) : (
+          filtered.map((text, i) => (
+            <li
+              key={`${text}-${i}`}
+              role="option"
+              aria-selected={i === highlight}
+              className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
+                i === highlight
+                  ? "bg-indigo-50 text-indigo-700 font-medium"
+                  : "text-slate-700 hover:bg-slate-50"
+              }`}
+              onMouseDown={(e) => {
+                e.preventDefault(); // Prevent input blur
+                commit(text);
+              }}
+              onMouseEnter={() => setHighlight(i)}
+            >
+              {text}
+            </li>
+          ))
+        )}
+      </ul>,
+      document.body
+    );
+  };
 
-        {boxes.map((box, boxIndex) => (
+  return (
+    <div className="relative w-full">
+      <input
+        // FIX: Assign DOM node to both our internal ref AND parent's ref
+        ref={(node) => {
+          inputRef.current = node;
+          if (typeof ref === 'function') {
+            ref(node);
+          } else if (ref) {
+            ref.current = node;
+          }
+        }}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+        placeholder="Search or type item..."
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          onChange?.(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (open && filtered.length > 0) {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setHighlight((h) => Math.min(h + 1, filtered.length - 1));
+              return;
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setHighlight((h) => Math.max(h - 1, 0));
+              return;
+            }
+            if (e.key === "Enter" && highlight >= 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              commit(filtered[highlight]);
+              return;
+            }
+          }
+
+          if (e.key === "Escape") {
+            setOpen(false);
+            setHighlight(-1);
+            return;
+          }
+
+          if (onKeyDown) onKeyDown(e);
+        }}
+      />
+      {renderPopup()}
+    </div>
+  );
+});
+
+/* --- 2. PRODUCT DATA --- */
+const SUGGESTED_ITEMS = [
+  "Abaya", "Baby bed", "Baby chair", "Baby cycle", "Baby dress", "Baby walker",
+  "Bag", "Bed sheet", "Bedroom set", "Bicycle", "Blanket", "Blender", "Book",
+  "Camera", "Carpet", "Chair", "Chocolate", "Coffee maker", "Computer",
+  "Cooking oil", "Cosmetics", "Cream", "Cupboard", "Curtain", "Dates", "Door",
+  "Dress", "Drill machine", "Dry fruits", "Fan", "Food items", "Food stuff",
+  "Football", "Footwear", "Fridge", "Grinder", "Heater", "Helmet", "Honey",
+  "Iron box", "Jacket", "Jeans", "Juice maker", "Kitchen items", "Laptop",
+  "Led tv", "Masala powder", "Mattress", "Microwave oven", "Milk powder",
+  "Mixer", "Mobile", "Monitor", "Oven", "Pampers", "Pant", "Perfume",
+  "Personal effect", "Phone", "Pillow", "Printer", "Projector", "Rice cooker",
+  "Saree", "School bag", "Scooter", "Shirt", "Shoes", "Soap", "Socks", "Sofa",
+  "Speaker", "Spices", "Stove", "Suitcase", "Sweets", "Table", "Tea maker",
+  "Tea pot", "Teddy bear", "Telephone", "Television", "Tent", "Tiles", "Tools",
+  "Toys", "Trousers", "Tshirt", "Tv", "Tv stand", "Tyre", "Vacuum cleaner",
+  "Vegetable cutter", "Washing machine", "Watch", "Water heater", "Water purifier",
+  "Window ac"
+];
+
+/* --- 3. BOXES SECTION --- */
+export const BoxesSection = React.memo(function BoxesSection({
+  boxes,
+  addBox,
+  removeBox,
+  setBoxWeight,
+  addItemToBox,
+  removeItemFromBox,
+  setBoxItem,
+  onItemKeyDown,
+  itemRefs,
+  itemOptions = SUGGESTED_ITEMS,
+  setFocusTarget,
+}) {
+  return (
+    <div className="space-y-6">
+      {boxes.map((box, bIdx) => {
+        const boxNumber = box.box_number ?? bIdx + 1;
+        return (
           <div
-            key={boxIndex}
-            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+            key={bIdx}
+            className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md"
           >
-            {/* Header */}
-            <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                <div className="text-sm font-semibold text-slate-800">
-                  Box No:{' '}
-                  <span className="ml-2 inline-flex items-center rounded-lg border border-slate-300 bg-slate-50 px-2 py-0.5">
-                    {boxIndex + 1}
-                  </span>
+            {/* Box Header */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                  <FaBox className="text-sm" />
                 </div>
+                <h3 className="font-semibold text-slate-800">
+                  Box {boxNumber}
+                </h3>
+              </div>
 
-                <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
-                  <span className="text-slate-600">Box Weight (kg)</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                    Weight (kg)
+                  </label>
                   <input
                     type="number"
                     min="0"
-                    step="0.001"
-                    className={`w-full sm:w-32 rounded-lg border px-3 py-2 text-right ${
-                      Number(box.box_weight || 0) <= 0
-                        ? "border-rose-300"
-                        : "border-slate-300"
-                    }`}
-                    value={box.box_weight || ""}
-                    onChange={(e) => setBoxWeight(boxIndex, e.target.value)}
-                    onKeyDown={(e) =>
-                      onItemKeyDown && onItemKeyDown(e, boxIndex)
-                    }
-                    placeholder="0.000"
+                    step="0.1"
+                    className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-center text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    value={box.box_weight === 0 ? "" : box.box_weight}
+                    onChange={(e) => setBoxWeight(bIdx, e.target.value)}
+                    placeholder="0.0"
                   />
-                </label>
+                </div>
+                {boxes.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeBox(bIdx)}
+                    className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                    title="Remove Box"
+                  >
+                    <FaTrash size={14} />
+                  </button>
+                )}
               </div>
-
-              <button
-                type="button"
-                onClick={() => removeBox(boxIndex)}
-                disabled={boxes.length <= 1}
-                className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm text-white ${
-                  boxes.length <= 1
-                    ? "bg-slate-300 cursor-not-allowed"
-                    : "bg-rose-600 hover:bg-rose-700"
-                }`}
-              >
-                Remove Box
-              </button>
             </div>
 
-            {/* Desktop Table */}
-            <div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-slate-600">
-                  <tr className="text-left">
-                    <th className="px-3 py-2 w-12 text-center">Sl.</th>
-                    <th className="px-3 py-2">Item</th>
-                    <th className="px-3 py-2 w-24 text-right">Pieces</th>
-                    <th className="px-3 py-2 w-28 text-right">Weight (kg)</th>
-                    <th className="px-3 py-2 w-20 text-right">Actions</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {box.items.map((it, itemIndex) => (
-                    <tr
-                      key={itemIndex}
-                      className={itemIndex % 2 ? "bg-white" : "bg-slate-50/50"}
-                    >
-                      <td className="px-3 py-2 text-center text-slate-500">
-                        {itemIndex + 1}
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <input
-                          ref={(el) => (itemRefs.current[`${boxIndex}-${itemIndex}-name`] = el)}
-                          type="text"
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                          value={it.name}
-                          placeholder="Item name"
-                          onChange={(e) =>
-                            setBoxItem(
-                              boxIndex,
-                              itemIndex,
-                              "name",
-                              e.target.value
-                            )
-                          }
-                          onKeyDown={(e) => handleKeyDown(e, boxIndex, itemIndex, 'name')}
-                        />
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <input
-                          ref={(el) =>
-                            (itemRefs.current[`${boxIndex}-${itemIndex}-pieces`] = el)
-                          }
-                          type="number"
-                          min="0"
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-right"
-                          placeholder="0"
-                          value={it.pieces}
-                          onChange={(e) =>
-                            setBoxItem(
-                              boxIndex,
-                              itemIndex,
-                              "pieces",
-                              Number(e.target.value || 0)
-                            )
-                          }
-                          onKeyDown={(e) => handleKeyDown(e, boxIndex, itemIndex, 'pieces')}
-                        />
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <input
-                          ref={(el) =>
-                            (itemRefs.current[`${boxIndex}-${itemIndex}-item_weight`] = el)
-                          }
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-right"
-                          placeholder="0.000"
-                          value={it.item_weight || ""}
-                          onChange={(e) =>
-                            setBoxItem(
-                              boxIndex,
-                              itemIndex,
-                              "item_weight",
-                              e.target.value
-                            )
-                          }
-                          onKeyDown={(e) => handleKeyDown(e, boxIndex, itemIndex, 'item_weight')}
-                        />
-                      </td>
-
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            removeItemFromBox(boxIndex, itemIndex)
-                          }
-                          className="rounded-lg bg-rose-500 px-2 py-1 text-white hover:bg-rose-600"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Items Table Header */}
+            <div className="grid grid-cols-[40px_1fr_80px_100px_40px] items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <div className="text-center">#</div>
+              <div>Item Description</div>
+              <div className="text-center">Qty</div>
+              <div className="text-center">Weight</div>
+              <div></div>
             </div>
 
-            {/* MOBILE STACKED CARD VIEW */}
-            <div className="sm:hidden space-y-3">
-              {box.items.map((it, itemIndex) => (
+            {/* Items List */}
+            <div className="divide-y divide-slate-50 p-2">
+              {box.items.map((item, i) => (
                 <div
-                  key={itemIndex}
-                  className="rounded-xl border border-slate-300 bg-slate-50 p-3 space-y-3"
+                  key={i}
+                  className="grid grid-cols-[40px_1fr_80px_100px_40px] items-start gap-2 py-2"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-700">
-                      Sl. {itemIndex + 1}
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        removeItemFromBox(boxIndex, itemIndex)
-                      }
-                      className="rounded-lg bg-rose-500 px-3 py-1 text-white text-xs"
-                    >
-                      Delete
-                    </button>
+                  {/* Sl No */}
+                  <div className="flex h-[38px] items-center justify-center text-sm font-medium text-slate-400">
+                    {i + 1}
                   </div>
 
-                  {/* Item */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-600">Item</label>
-                    <input
-                      type="text"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                      value={it.name}
-                      placeholder="Item name"
-                      onChange={(e) =>
-                        setBoxItem(boxIndex, itemIndex, "name", e.target.value)
-                      }
+                  {/* Item Name */}
+                  <div>
+                    <ItemAutosuggest
+                      ref={(el) => (itemRefs.current[`${bIdx}-${i}-name`] = el)}
+                      options={itemOptions}
+                      value={item.name}
+                      onChange={(val) => setBoxItem(bIdx, i, "name", val)}
+                      onKeyDown={(e) => onItemKeyDown(e, bIdx)}
                     />
                   </div>
 
-                  {/* Pieces */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-600">Pieces</label>
+                  {/* Quantity */}
+                  <div>
+                    <input
+                      type="number"
+                      min="1"
+                      className="h-[38px] w-full rounded-lg border border-slate-300 px-2 text-center text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      value={item.pieces}
+                      onChange={(e) =>
+                        setBoxItem(bIdx, i, "pieces", e.target.value)
+                      }
+                      onKeyDown={(e) => onItemKeyDown(e, bIdx)}
+                      placeholder="1"
+                    />
+                  </div>
+
+                  {/* Item Weight */}
+                  <div>
                     <input
                       type="number"
                       min="0"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                      value={it.pieces}
+                      step="0.01"
+                      className="h-[38px] w-full rounded-lg border border-slate-300 px-2 text-center text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      value={item.item_weight === 0 ? "" : item.item_weight}
                       onChange={(e) =>
-                        setBoxItem(
-                          boxIndex,
-                          itemIndex,
-                          "pieces",
-                          Number(e.target.value || 0)
-                        )
+                        setBoxItem(bIdx, i, "item_weight", e.target.value)
                       }
+                      onKeyDown={(e) => onItemKeyDown(e, bIdx)}
+                      placeholder="0.0"
                     />
                   </div>
 
-                  {/* Weight */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-600">
-                      Weight (kg)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                      value={it.item_weight || ""}
-                      placeholder="0.000"
-                      onChange={(e) =>
-                        setBoxItem(
-                          boxIndex,
-                          itemIndex,
-                          "item_weight",
-                          e.target.value
-                        )
-                      }
-                    />
+                  {/* Remove Item Button */}
+                  <div className="flex h-[38px] items-center justify-center">
+                    {box.items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeItemFromBox(bIdx, i)}
+                        className="text-slate-300 transition-colors hover:text-rose-500"
+                        title="Remove Item"
+                      >
+                        <FaTrash size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Add Item */}
-            <div className="mt-4 flex justify-end">
+            {/* Add Item Button */}
+            <div className="border-t border-slate-100 bg-slate-50 px-4 py-2">
               <button
                 type="button"
-                onClick={() => addItemToBox(boxIndex)}
-                className="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
+                onClick={() => addItemToBox(bIdx)}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
               >
-                Add Item
+                + Add Another Item
               </button>
             </div>
           </div>
-        ))}
-      </div>
-    );
-  }
-);
+        );
+      })}
+    </div>
+  );
+});

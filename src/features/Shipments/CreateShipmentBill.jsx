@@ -259,7 +259,7 @@ export default function CreateShipmentBill() {
 
   const fileRef = useRef(null);
   const [importing, setImporting] = useState(false);
-  const [submitting, setSubmitting] = useState(false); // Already present, good.
+  const [submitting, setSubmitting] = useState(false);
 
   /* ---------- bootstrap: fetch dropdowns + profile + statuses ---------- */
   useEffect(() => {
@@ -573,7 +573,7 @@ export default function CreateShipmentBill() {
   /* ---------- submit ---------- */
   const onSubmit = async (e) => {
     e.preventDefault();
-    setSubmitting(true); // Set submitting state to true at the start
+    setSubmitting(true);
     setFieldErrors({});
 
     if (Number(myUserId) <= 0) {
@@ -663,7 +663,7 @@ export default function CreateShipmentBill() {
         text: e2?.response?.data?.message || e2?.message || e2?.details?.message || "Failed to create shipment.",
       });
     } finally {
-      setSubmitting(false); // Reset submitting state in finally block
+      setSubmitting(false);
     }
   };
 
@@ -672,8 +672,12 @@ export default function CreateShipmentBill() {
   }, [totalPickPages, pickPage]);
 
   /* ---------- derived for Saved panel ---------- */
+  // FIX: Updated to check both total_weight and weight
   const totalAddedWeight = useMemo(
-    () => addedRows.reduce((sum, r) => sum + Number.parseFloat(r?.total_weight || 0), 0),
+    () => addedRows.reduce((sum, r) => {
+       const w = Number(r?.total_weight ?? r?.weight ?? 0);
+       return sum + (Number.isFinite(w) ? w : 0);
+    }, 0),
     [addedRows]
   );
 
@@ -682,7 +686,7 @@ export default function CreateShipmentBill() {
     addedRows.length > 0 &&
     Number(myUserId) > 0 &&
     Number(myBranchId) > 0 &&
-    !submitting; // Correctly uses submitting state
+    !submitting;
 
   const renderErr = (field) =>
     Array.isArray(fieldErrors?.[field]) ? (
@@ -699,150 +703,129 @@ export default function CreateShipmentBill() {
     return rows.length > cap ? `${slice} …(+${rows.length - cap} more)` : slice;
   };
 
-  const pluckIds = (resp, keys = []) => {
-    const r = resp?.data ?? resp;
-    const pools = [r, r?.data, r?.meta, r?.result];
-    for (const k of keys) {
-      for (const o of pools) {
-        const v = o?.[k];
-        if (Array.isArray(v) && v.length) return v.map(Number);
-      }
-    }
-    return [];
-  };
+  const handleImportExcel = async (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
 
-const handleImportExcel = async (e) => {
-  const file = e.target?.files?.[0];
-  if (!file) return;
+    setImporting(true);
+    setToast({ open: true, variant: "success", text: "Uploading… reading file…" });
 
-  setImporting(true);
-  setToast({ open: true, variant: "success", text: "Uploading… reading file…" });
-
-  try {
-    // Upload file
-    const resp = await importCustomShipments(file, {
-      branch_id: myBranchId ?? undefined,
-      status_id: 13,
-    });
-
-    // Assume the response contains the imported rows
-    const importedRows = unwrapArray(resp);
-
-    if (importedRows.length > 0) {
-      // ✅ Add to Selected Cargos
-      setAddedRows(prev => {
-        const seen = new Set(prev.map(r => Number(r.id)));
-        const merged = [...prev];
-        importedRows.forEach(r => {
-          const id = Number(r.id);
-          if (!seen.has(id)) merged.push(r);
-        });
-        return merged;
+    try {
+      // Upload file
+      const resp = await importCustomShipments(file, {
+        branch_id: myBranchId ?? undefined,
+        status_id: 13,
       });
 
-      importedRows.forEach(r => sessionHiddenIdsRef.current.add(Number(r.id)));
+      // Assume the response contains the imported rows
+      const importedRows = unwrapArray(resp);
 
-      setToast({
-        open: true,
-        variant: "success",
-        text: `Imported ${importedRows.length} cargos and added to Selected Cargos.`,
-      });
-    } else {
-      // Fallback: if no rows returned, try old detection logic
-      // Take snapshot before import
-      const beforeResp = await getPhysicalBills({}, false);
-      const beforeFree = unwrapArray(beforeResp);
-      const beforeFreeIds = new Set(beforeFree.map(r => Number(r.id)));
-
-      // Fetch new free list after import
-      const afterResp = await getPhysicalBills({}, false);
-      const afterFree = unwrapArray(afterResp);
-
-      const addedIds = new Set(addedRows.map(r => Number(r.id)));
-
-      // Detect newly imported cargos (any not seen before)
-      let newFreeRows = afterFree.filter(r => !beforeFreeIds.has(Number(r.id)));
-
-      // 🔥 Fallback: if no diff found, use all free cargos uploaded today with status 13
-      if (!newFreeRows.length) {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        newFreeRows = afterFree.filter(r => { // from all free cargos
-          const d = String(r.created_at || "").slice(0, 10);
-          return d === todayStr &&
-                 String(r.status) === "13" &&
-                 String(r.is_shipment) === "0" &&
-                 !addedIds.has(Number(r.id)); // And not already in the list
+      if (importedRows.length > 0) {
+        // ✅ Add to Selected Cargos
+        setAddedRows(prev => {
+          const seen = new Set(prev.map(r => Number(r.id)));
+          const merged = [...prev];
+          importedRows.forEach(r => {
+            const id = Number(r.id);
+            if (!seen.has(id)) merged.push(r);
+          });
+          return merged;
         });
-      }
 
-      if (!newFreeRows.length) {
+        importedRows.forEach(r => sessionHiddenIdsRef.current.add(Number(r.id)));
+
         setToast({
           open: true,
-          variant: "warning",
-          text: "Import succeeded, but nothing new to add — all cargos already exist or are used.",
+          variant: "success",
+          text: `Imported ${importedRows.length} cargos and added to Selected Cargos.`,
         });
-        return;
-      }
+      } else {
+        // Fallback: if no rows returned, try old detection logic
+        const beforeResp = await getPhysicalBills({}, false);
+        const beforeFree = unwrapArray(beforeResp);
+        const beforeFreeIds = new Set(beforeFree.map(r => Number(r.id)));
 
-      // ✅ Add to Selected Cargos
-      setAddedRows(prev => {
-        const seen = new Set(prev.map(r => Number(r.id)));
-        const merged = [...prev];
-        newFreeRows.forEach(r => {
-          const id = Number(r.id);
-          if (!seen.has(id)) merged.push(r);
+        const afterResp = await getPhysicalBills({}, false);
+        const afterFree = unwrapArray(afterResp);
+
+        const addedIds = new Set(addedRows.map(r => Number(r.id)));
+
+        let newFreeRows = afterFree.filter(r => !beforeFreeIds.has(Number(r.id)));
+
+        if (!newFreeRows.length) {
+          const todayStr = new Date().toISOString().slice(0, 10);
+          newFreeRows = afterFree.filter(r => {
+            const d = String(r.created_at || "").slice(0, 10);
+            return d === todayStr &&
+                   String(r.status) === "13" &&
+                   String(r.is_shipment) === "0" &&
+                   !addedIds.has(Number(r.id));
+          });
+        }
+
+        if (!newFreeRows.length) {
+          setToast({
+            open: true,
+            variant: "warning",
+            text: "Import succeeded, but nothing new to add — all cargos already exist or are used.",
+          });
+          return;
+        }
+
+        setAddedRows(prev => {
+          const seen = new Set(prev.map(r => Number(r.id)));
+          const merged = [...prev];
+          newFreeRows.forEach(r => {
+            const id = Number(r.id);
+            if (!seen.has(id)) merged.push(r);
+          });
+          return merged;
         });
-        return merged;
-      });
 
-      newFreeRows.forEach(r => sessionHiddenIdsRef.current.add(Number(r.id)));
+        newFreeRows.forEach(r => sessionHiddenIdsRef.current.add(Number(r.id)));
 
-      setToast({
-        open: true,
-        variant: "success",
-        text: `Imported ${newFreeRows.length} cargos and added to Selected Cargos.`,
-      });
-    }
-  } catch (err) {
-    let errorMessage = "Import failed. Please check your file and try again.";
-
-    if (err.response?.data) {
-      const { message, error, errors } = err.response.data;
-      if (message) {
-        errorMessage = message;
-      } else if (error) {
-        errorMessage = error;
+        setToast({
+          open: true,
+          variant: "success",
+          text: `Imported ${newFreeRows.length} cargos and added to Selected Cargos.`,
+        });
       }
+    } catch (err) {
+      let errorMessage = "Import failed. Please check your file and try again.";
 
-      // Detect raw SQL errors and provide a friendlier message.
-      const rawError = message || error || "";
-      if (rawError.includes("SQLSTATE") && rawError.includes("Incorrect decimal value")) {
-        errorMessage = "Import failed: One or more rows contain invalid numeric data (e.g., in 'weight' or 'pcs' columns). Please check your file for non-numeric values and try again.";
-      } else if (rawError.includes("SQLSTATE") && rawError.includes("Invalid datetime format")) {
-        errorMessage = "Import failed: One or more rows contain an invalid date format. Please ensure all dates are correct and try again.";
-      } else if (rawError.includes("SQLSTATE")) {
-        errorMessage = "An unexpected database error occurred during import. Please check your file format and data.";
-      }
+      if (err.response?.data) {
+        const { message, error, errors } = err.response.data;
+        if (message) {
+          errorMessage = message;
+        } else if (error) {
+          errorMessage = error;
+        }
 
-      // Handle structured validation errors
-      if (errors && typeof errors === 'object') {
-        const validationMessages = Object.entries(errors).map(([field, messages]) => 
-          `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`
-        );
-        if (validationMessages.length > 0) {
-          errorMessage = `Validation failed: ${validationMessages.slice(0, 3).join('; ')}${validationMessages.length > 3 ? '...' : ''}`;
+        const rawError = message || error || "";
+        if (rawError.includes("SQLSTATE") && rawError.includes("Incorrect decimal value")) {
+          errorMessage = "Import failed: One or more rows contain invalid numeric data (e.g., in 'weight' or 'pcs' columns). Please check your file for non-numeric values and try again.";
+        } else if (rawError.includes("SQLSTATE") && rawError.includes("Invalid datetime format")) {
+          errorMessage = "Import failed: One or more rows contain an invalid date format. Please ensure all dates are correct and try again.";
+        } else if (rawError.includes("SQLSTATE")) {
+          errorMessage = "An unexpected database error occurred during import. Please check your file format and data.";
+        }
+
+        if (errors && typeof errors === 'object') {
+          const validationMessages = Object.entries(errors).map(([field, messages]) => 
+            `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`
+          );
+          if (validationMessages.length > 0) {
+            errorMessage = `Validation failed: ${validationMessages.slice(0, 3).join('; ')}${validationMessages.length > 3 ? '...' : ''}`;
+          }
         }
       }
+
+      setToast({ open: true, variant: "error", text: errorMessage });
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
-
-    // Use a longer duration for toasts with potentially detailed error messages
-    setToast({ open: true, variant: "error", text: errorMessage });
-  } finally {
-    setImporting(false);
-    if (fileRef.current) fileRef.current.value = "";
-  }
-};
-
+  };
 
   return (
     <div className="w-full mx-auto">
@@ -1094,20 +1077,20 @@ const handleImportExcel = async (e) => {
                 )}
 
                 <button
-  type="button"
-  onClick={() => fileRef.current?.click()}
-  className="px-3 py-2 rounded border hover:bg-gray-50 disabled:opacity-60"
-  disabled={importing}
->
-  {importing ? "Importing…" : "Import Excel"}
-</button>
-<input
-  ref={fileRef}
-  type="file"
-  accept=".xlsx,.xls,.csv"
-  className="hidden"
-  onChange={handleImportExcel}
-/>
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="px-3 py-2 rounded border hover:bg-gray-50 disabled:opacity-60"
+                  disabled={importing}
+                >
+                  {importing ? "Importing…" : "Import Excel"}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleImportExcel}
+                />
 
                 <button
                   type="button"
@@ -1135,98 +1118,85 @@ const handleImportExcel = async (e) => {
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full table-auto">
-              <thead className="bg-gray-200 text-sm text-gray-700 border-y border-gray-300">
-  <tr>
-  
-    <th className="py-2 px-4 border">SL No</th>
-    <th className="py-2 px-4 border">Invoice / Bill No</th>
-    <th className="py-2 px-4 border">Pcs</th>
-    <th className="py-2 px-4 border">Weight (kg)</th>
-    <th className="py-2 px-4 border">Shipment Method</th>
-    <th className="py-2 px-4 border">Destination</th>
-    <th className="py-2 px-4 border">Date</th>
-    <th className="py-2 px-4 border">Status</th>
-    <th className="py-2 px-4 border">Action</th>
-  </tr>
-</thead>
+                  <thead className="bg-gray-200 text-sm text-gray-700 border-y border-gray-300">
+                    <tr>
+                      <th className="py-2 px-4 border">SL No</th>
+                      <th className="py-2 px-4 border">Invoice / Bill No</th>
+                      <th className="py-2 px-4 border">Pcs</th>
+                      <th className="py-2 px-4 border">Weight (kg)</th>
+                      <th className="py-2 px-4 border">Shipment Method</th>
+                      <th className="py-2 px-4 border">Destination</th>
+                      <th className="py-2 px-4 border">Date</th>
+                      <th className="py-2 px-4 border">Status</th>
+                      <th className="py-2 px-4 border">Action</th>
+                    </tr>
+                  </thead>
 
-<tbody className="text-sm text-gray-700">
-  {addedRows.length === 0 && (
-    <tr>
-      <td className="py-6 px-4 text-center text-gray-500" colSpan={8}>
-        No cargos added yet. Use "Add Row" or "Import Excel" to add cargos.
-      </td>
-    </tr>
-  )}
+                  <tbody className="text-sm text-gray-700">
+                    {addedRows.length === 0 && (
+                      <tr>
+                        <td className="py-6 px-4 text-center text-gray-500" colSpan={9}>
+                          No cargos added yet. Use "Add Row" or "Import Excel" to add cargos.
+                        </td>
+                      </tr>
+                    )}
 
-  {visibleAddedRows.map((row, idx) => {
-    const statusTextVal = getStatusText(row, statusMaps.byId);
+                    {visibleAddedRows.map((row, idx) => {
+                      const statusTextVal = getStatusText(row, statusMaps.byId);
 
-    return (
-      <tr key={row.id} className="hover:bg-gray-50">
-        {/* <td className="py-2 px-4 border">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={() => toggleOnePicker(row)}
-            disabled={isUsed}
-            title={isUsed ? "Already in a shipment" : ""}
-          />
-        </td> */}
-        {/* SL No is page-relative */}
-        <td className="py-2 px-4 border">{selBaseIndex + idx + 1}</td>
-        <td className="py-2 px-4 border">{getBillNo(row) || "—"}</td>
-        <td className="py-2 px-4 border">{getPcs(row) ?? "—"}</td>
-        <td className="py-2 px-4 border">{getWeight(row) ?? "—"}</td>
-        <td className="py-2 px-4 border">{getMethod(row) || "—"}</td>
-        <td className="py-2 px-4 border">{getDest(row) || "—"}</td>
-        <td className="py-2 px-4 border">{getDate(row) || "—"}</td>
-        <td className="py-2 px-4 border">
-          <span className={`px-2 py-1 text-xs rounded-lg ${statusPill(statusTextVal)}`}>
-            {statusTextVal || "—"}
-          </span>
-        </td>
-        <td className="py-2 px-4 border text-center">
-          <button
-            type="button"
-            onClick={() => removeFromAdded(row.id)}
-            className="text-rose-600 hover:text-rose-800 text-xs"
-          >
-            Remove
-          </button>
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-
+                      return (
+                        <tr key={row.id} className="hover:bg-gray-50">
+                          <td className="py-2 px-4 border">{selBaseIndex + idx + 1}</td>
+                          <td className="py-2 px-4 border">{getBillNo(row) || "—"}</td>
+                          <td className="py-2 px-4 border">{getPcs(row) ?? "—"}</td>
+                          <td className="py-2 px-4 border">{getWeight(row) ?? "—"}</td>
+                          <td className="py-2 px-4 border">{getMethod(row) || "—"}</td>
+                          <td className="py-2 px-4 border">{getDest(row) || "—"}</td>
+                          <td className="py-2 px-4 border">{getDate(row) || "—"}</td>
+                          <td className="py-2 px-4 border">
+                            <span className={`px-2 py-1 text-xs rounded-lg ${statusPill(statusTextVal)}`}>
+                              {statusTextVal || "—"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-4 border text-center">
+                            <button
+                              type="button"
+                              onClick={() => removeFromAdded(row.id)}
+                              className="text-rose-600 hover:text-rose-800 text-xs"
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
                 </table>
                 <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50 text-sm">
-  <div>
-    Page <span className="font-medium">{selPage}</span> of{" "}
-    <span className="font-medium">{totalSelPages}</span> •{" "}
-    <span className="text-gray-500">{addedRows.length}</span> items
-  </div>
-  <div className="flex items-center gap-2">
-    <button
-      type="button"
-      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
-      onClick={() => setSelPage((p) => Math.max(1, p - 1))}
-      disabled={selPage === 1}
-    >
-      Prev
-    </button>
-    <button
-      type="button"
-      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
-      onClick={() => setSelPage((p) => Math.min(totalSelPages, p + 1))}
-      disabled={selPage === totalSelPages}
-    >
-      Next
-    </button>
-  </div>
-</div>
-
+                  <div>
+                    Page <span className="font-medium">{selPage}</span> of{" "}
+                    <span className="font-medium">{totalSelPages}</span> •{" "}
+                    <span className="text-gray-500">{addedRows.length}</span> items
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
+                      onClick={() => setSelPage((p) => Math.max(1, p - 1))}
+                      disabled={selPage === 1}
+                    >
+                      Prev
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
+                      onClick={() => setSelPage((p) => Math.min(totalSelPages, p + 1))}
+                      disabled={selPage === totalSelPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1305,49 +1275,48 @@ const handleImportExcel = async (e) => {
                       </tr>
                     </thead>
                     <tbody className="text-sm text-gray-700">
-  {results.length === 0 && !loadingList && addedRows.length === 0 && (
-    <tr>
-      <td className="py-6 px-4 text-center text-gray-500" colSpan={9}>
-        No cargos. Try searching by booking number.
-      </td>
-    </tr>
-  )}
+                      {results.length === 0 && !loadingList && addedRows.length === 0 && (
+                        <tr>
+                          <td className="py-6 px-4 text-center text-gray-500" colSpan={9}>
+                            No cargos. Try searching by booking number.
+                          </td>
+                        </tr>
+                      )}
 
-  {visibleResults.map((row, idx) => {
-    const checked   = pickSelectedIds.includes(Number(row.id));
-    const isUsed    = Number(row?.is_shipment ?? row?.is_in_cargo_shipment ?? 0) === 1;
-    const statusStr = getStatusText(row, statusMaps.byId);
+                      {visibleResults.map((row, idx) => {
+                        const checked = pickSelectedIds.includes(Number(row.id));
+                        const isUsed = Number(row?.is_shipment ?? row?.is_in_cargo_shipment ?? 0) === 1;
+                        const statusStr = getStatusText(row, statusMaps.byId);
 
-    return (
-      <tr key={row.id} className="hover:bg-gray-50">
-        <td className="py-2 px-4 border">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={() => toggleOnePicker(row)}
-            disabled={isUsed}
-            title={isUsed ? "Already in a shipment" : ""}
-          />
-        </td>
-        {/* SL No (1-based index) */}
-        <td className="py-2 px-4 border">{baseIndex + idx + 1}</td>
+                        return (
+                          <tr key={row.id} className="hover:bg-gray-50">
+                            <td className="py-2 px-4 border">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleOnePicker(row)}
+                                disabled={isUsed}
+                                title={isUsed ? "Already in a shipment" : ""}
+                              />
+                            </td>
+                            {/* SL No (1-based index) */}
+                            <td className="py-2 px-4 border">{baseIndex + idx + 1}</td>
 
-        <td className="py-2 px-4 border">{getBillNo(row) || "—"}</td>
-        <td className="py-2 px-4 border">{getPcs(row) ?? "—"}</td>
-        <td className="py-2 px-4 border">{getWeight(row) ?? "—"}</td>
-        <td className="py-2 px-4 border">{getMethod(row) || "—"}</td>
-        <td className="py-2 px-4 border">{getDest(row) || "—"}</td>
-        <td className="py-2 px-4 border">{fmtDate(getDateISO(row)) || "—"}</td>
-        <td className="py-2 px-4 border">
-          <span className={`px-2 py-1 text-xs rounded-lg ${statusPill(statusStr)}`}>
-            {statusStr || "—"}
-          </span>
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-
+                            <td className="py-2 px-4 border">{getBillNo(row) || "—"}</td>
+                            <td className="py-2 px-4 border">{getPcs(row) ?? "—"}</td>
+                            <td className="py-2 px-4 border">{getWeight(row) ?? "—"}</td>
+                            <td className="py-2 px-4 border">{getMethod(row) || "—"}</td>
+                            <td className="py-2 px-4 border">{getDest(row) || "—"}</td>
+                            <td className="py-2 px-4 border">{fmtDate(getDateISO(row)) || "—"}</td>
+                            <td className="py-2 px-4 border">
+                              <span className={`px-2 py-1 text-xs rounded-lg ${statusPill(statusStr)}`}>
+                                {statusStr || "—"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
                   </table>
                 </div>
 
@@ -1404,7 +1373,6 @@ const handleImportExcel = async (e) => {
               </div>
             )}
           </div>
-
 
           {/* --- Actions --- */}
           <div className="mt-6 flex items-center justify-end gap-3">

@@ -171,6 +171,7 @@ const EditBranch = () => {
     } else if (name === "branch_code") {
       setField(name, value.toUpperCase());
     } else if (name === "start_number") {
+      // Allow change only if it wasn't set initially (though UI is disabled)
       setField(name, onlyDigits(value).slice(0, 6));
     } else {
       setField(name, value);
@@ -529,7 +530,7 @@ const EditBranch = () => {
                 />
               </label>
 
-              {/* Start Number */}
+              {/* Start Number - DISABLED/READ-ONLY */}
               <label className="block">
                 <span className="block text-sm font-medium text-slate-700">Invoice starting (6 digits)</span>
                 <input
@@ -541,7 +542,10 @@ const EditBranch = () => {
                   pattern="\d{6}"
                   maxLength={6}
                   placeholder="e.g., 100001"
-                  className="mt-1 w-full border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  // Added disabled, changed cursor, changed background and text color
+                  disabled={true}
+                  className="mt-1 w-full border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-100 text-slate-500 cursor-not-allowed"
+                  title="Cannot be modified once created"
                   required
                 />
               </label>
