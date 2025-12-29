@@ -56,7 +56,15 @@ const TableSkeleton = () => (
 export default function AllCargoList() {
   const navigate = useNavigate();
   const location = useLocation();
-  const token = useSelector((state) => state.auth?.token);
+  
+  // Get both token and user from store
+  const { token, user } = useSelector((state) => state.auth || {});
+
+  // Identify if the user is Super Admin (Role ID: 1)
+  const isSuperAdmin = useMemo(() => {
+    const roleId = user?.role_id ?? user?.role?.id ?? user?.role;
+    return String(roleId) === "1";
+  }, [user]);
 
   // Data State
   const [cargos, setCargos] = useState([]);
@@ -185,8 +193,8 @@ export default function AllCargoList() {
           </div>
           
           <div className="flex flex-wrap gap-2">
-            {/* Using the fixed reportLinks array */}
-            {reportLinks.map((item) => (
+            {/* Show Reports only if Super Admin */}
+            {isSuperAdmin && reportLinks.map((item) => (
               <button 
                 key={item.label}
                 onClick={() => navigateToReport(item.path)}
