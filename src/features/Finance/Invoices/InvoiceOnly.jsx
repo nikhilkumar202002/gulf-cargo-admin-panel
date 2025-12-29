@@ -1117,20 +1117,49 @@ export default function InvoiceView({
        structuredRows.push(item);
     });
 
-    // We slice the *structured* rows (headers + items) to respect page limits
-    const LEFT_ROWS = 25;
-    const RIGHT_ROWS = 20;
+   // --- CHANGED LOGIC START: Slice based on ITEM COUNT only ---
+              const LEFT_ROWS_LIMIT = 25;
+              const RIGHT_ROWS_LIMIT = 20;
 
-    const leftRows = structuredRows.slice(0, LEFT_ROWS);
-    const rightRows = structuredRows.slice(LEFT_ROWS, LEFT_ROWS + RIGHT_ROWS);
+              const leftRows = [];
+              const rightRows = [];
+              let currentList = leftRows;
+              let currentItemCount = 0;
 
-    // Fillers if needed (just for visual height consistency)
-    const leftFillers = Array.from({
-      length: Math.max(0, LEFT_ROWS - leftRows.length),
-    });
-    const rightFillers = Array.from({
-      length: Math.max(0, RIGHT_ROWS - rightRows.length),
-    });
+              structuredRows.forEach((row) => {
+                if (row.isHeader) {
+                  // Headers just get added without incrementing the item count
+                  currentList.push(row);
+                } else {
+                  // This is an item
+                  if (currentList === leftRows && currentItemCount >= LEFT_ROWS_LIMIT) {
+                    // Switch to right list
+                    currentList = rightRows;
+                    currentItemCount = 0;
+                    
+                    // Optional: If the last thing on the left was a header (orphaned), move it to right
+                    const last = leftRows[leftRows.length - 1];
+                    if (last && last.isHeader) {
+                        rightRows.push(leftRows.pop());
+                    }
+                  }
+                  
+                  // Stop adding if right side is full (to prevent overflow)
+                  if (currentList === rightRows && currentItemCount >= RIGHT_ROWS_LIMIT) {
+                     return;
+                  }
+
+                  currentList.push(row);
+                  currentItemCount++;
+                }
+              });
+
+              const leftItemCount = leftRows.filter(r => !r.isHeader).length;
+              const rightItemCount = rightRows.filter(r => !r.isHeader).length;
+
+              const leftFillers = Array.from({ length: Math.max(0, LEFT_ROWS_LIMIT - leftItemCount) });
+              const rightFillers = Array.from({ length: Math.max(0, RIGHT_ROWS_LIMIT - rightItemCount) });
+              // --- CHANGED LOGIC END ---
 
     const renderRow = (row, idx, prefix) => {
         if(row.isHeader) {

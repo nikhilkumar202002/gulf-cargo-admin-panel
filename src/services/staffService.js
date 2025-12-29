@@ -52,6 +52,6 @@ export const updateStaff = async (id, payload) => {
 };
 
 export const deleteStaff = async (id) => {
-  const res = await api.delete(`/staff/${id}`);
+  const res = await api.delete(`/staff/${id}`); // Expects "123", not { id: "123" }
   return unwrap(res);
 };

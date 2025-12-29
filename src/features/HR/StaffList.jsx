@@ -182,28 +182,34 @@ const mapStaff = (s, idx) => {
 };
 
 const handleDelete = async (id) => {
-  if (!id) return;
-  if (!window.confirm("Delete this staff member? This cannot be undone.")) return;
+    if (!id) return;
+    if (!window.confirm("Delete this staff member? This cannot be undone.")) return;
 
-  setDeletingId(id);
-  try {
-    const p = deleteStaff({ id });
+    setDeletingId(id);
+    try {
+      // 1. Pass 'id' directly, not as an object
+      const p = deleteStaff(id);
 
-    await toast.promise(p, {
-      loading: "Deleting user…",
-      success: "User deleted successfully.",
-      error: (err) => err?.message || "Failed to delete user.",
-    });
+      await toast.promise(p, {
+        loading: "Deleting user…",
+        success: "User deleted successfully.",
+        // 2. check err.response.data.message to show the backend validation message
+        error: (err) => 
+          err?.response?.data?.message || 
+          err?.message || 
+          "Failed to delete user.",
+      });
 
-    setStaff((prev) => prev.filter((s) => s.id !== id));
-    setServerMeta((m) => (m ? { ...m, total: Math.max(0, (m.total || 1) - 1) } : m));
-  } catch (e) {
-    // toast already showed server message via error: callback
-  } finally {
-    setDeletingId(null);
-  }
-};
-
+      // Update UI only if successful
+      setStaff((prev) => prev.filter((s) => s.id !== id));
+      setServerMeta((m) => (m ? { ...m, total: Math.max(0, (m.total || 1) - 1) } : m));
+    } catch (e) {
+      // The toast handles the error display, so we just catch to prevent crash
+      console.error("Deletion failed:", e);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
 
   return (
