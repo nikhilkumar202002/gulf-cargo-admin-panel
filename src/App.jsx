@@ -16,10 +16,10 @@ const App = memo(function App() {
   
   // Refs for timers and channels
   const idleTimerRef = useRef(null);
+  const midnightIntervalRef = useRef(null);
   const bcRef = useRef(null);
 
   // --- [FIX] Clear React Query Cache on Logout ---
-  // This watches the token; if it disappears (logout), we wipe the memory cache.
   useEffect(() => {
     if (!token) {
       queryClient.removeQueries();
@@ -35,9 +35,9 @@ const App = memo(function App() {
         const loginDate = localStorage.getItem("loginDate");
         const today = new Date().toDateString();
 
-        // A. Daily Logout / Cache Clear Check
+        // A. Check if the app was loaded on a new day (Initial Check)
         if (loginDate && loginDate !== today) {
-          console.log("New day detected. Clearing session and cache.");
+          console.log("New day detected (on load). Clearing session.");
           dispatch(logoutUser());
           queryClient.clear(); 
           localStorage.clear(); 
@@ -48,7 +48,6 @@ const App = memo(function App() {
         // B. Validate Token
         if (storedToken) {
           try {
-            // Attach token to instance just in case
             api.defaults.headers.Authorization = `Bearer ${storedToken}`;
             const profileRes = await api.get("/profile");
             const user = profileRes.data?.user || profileRes.data?.data || profileRes.data;
@@ -72,7 +71,32 @@ const App = memo(function App() {
     initializeAuth();
   }, [dispatch, isInitialized, queryClient]);
 
-  // --- 2. Inactivity Timer (30 Mins) ---
+  // --- 2. Midnight Auto-Logout (Every Timezone) ---
+  useEffect(() => {
+    if (!token) {
+        if (midnightIntervalRef.current) clearInterval(midnightIntervalRef.current);
+        return;
+    }
+
+    // Check every 1 minute if the date has changed
+    midnightIntervalRef.current = setInterval(() => {
+        const loginDate = localStorage.getItem("loginDate");
+        const currentDate = new Date().toDateString();
+
+        if (loginDate && loginDate !== currentDate) {
+            console.log("Midnight crossed. Logging out.");
+            alert("It is past midnight. You have been logged out for security.");
+            dispatch(logoutUser());
+        }
+    }, 60000); // 60 seconds
+
+    return () => {
+        if (midnightIntervalRef.current) clearInterval(midnightIntervalRef.current);
+    };
+  }, [token, dispatch]);
+
+
+  // --- 3. Inactivity Timer (30 Mins) ---
   const handleUserActivity = useCallback(() => {
     if (!token) return;
     
@@ -99,7 +123,7 @@ const App = memo(function App() {
     };
   }, [token, handleUserActivity]);
 
-  // --- 3. Cross-Tab / Single Tab Enforcement ---
+  // --- 4. Cross-Tab / Single Tab Enforcement ---
   useEffect(() => {
     bcRef.current = new BroadcastChannel("gulf_cargo_auth");
     const bc = bcRef.current;

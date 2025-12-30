@@ -1,6 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
-import { PiShippingContainerFill } from "react-icons/pi";
+import { 
+  PiShippingContainerFill, 
+  PiAirplaneTiltFill, 
+  PiReceipt, 
+  PiUserCircle, 
+  PiBuildings,
+  PiMagnifyingGlass,
+  PiXBold,
+  PiCheckBold,
+  PiPlusBold,
+  PiTrash,
+  PiFileXls,
+  PiFloppyDiskBack
+} from "react-icons/pi";
 
 import {
   getShipmentMethods,
@@ -31,15 +44,15 @@ const onlyFree = (rows = []) =>
 
 const statusPill = (s) => {
   const v = String(s || "").toLowerCase();
-  if (!v || v === "pending") return "bg-amber-100 text-amber-800";
-  if (v.includes("received") || v.includes("delivered")) return "bg-emerald-100 text-emerald-800";
-  if (v.includes("cancel")) return "bg-rose-100 text-rose-800";
-  return "bg-slate-100 text-slate-800";
+  if (!v || v === "pending") return "bg-amber-100 text-amber-700 px-2 py-1 rounded-md text-xs font-medium border border-amber-200";
+  if (v.includes("received") || v.includes("delivered")) return "bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md text-xs font-medium border border-emerald-200";
+  if (v.includes("cancel")) return "bg-rose-100 text-rose-700 px-2 py-1 rounded-md text-xs font-medium border border-rose-200";
+  return "bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-medium border border-slate-200";
 };
 
 const buildStatusMaps = (arr = []) => {
-  const byId = new Map();      // 13 -> "Enquiry collected"
-  const byName = new Map();    // "enquiry collected" -> 13
+  const byId = new Map();      
+  const byName = new Map();    
   for (const s of arr) {
     if (s?.id != null && s?.name) {
       byId.set(Number(s.id), String(s.name));
@@ -76,29 +89,45 @@ const fmtDate = (iso) => {
 
 const getDate = (r) => fmtDate(getDateISO(r));
 
+// --- UI Components ---
+const SectionTitle = ({ icon: Icon, title }) => (
+  <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100">
+    <Icon className="text-indigo-600 text-lg" />
+    <h3 className="font-semibold text-gray-800">{title}</h3>
+  </div>
+);
+
+const InputGroup = ({ label, error, children }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide ml-1">{label}</label>
+    {children}
+    {error && <span className="text-xs text-rose-500 ml-1">{error}</span>}
+  </div>
+);
+
 function RightToast({ open, variant = "success", children, onClose }) {
   if (!open) return null;
   return (
-    <div className="fixed top-4 right-4 z-[60]">
+    <div className="fixed top-6 right-6 z-[999] animate-fade-in-left">
       <div
-        className={`rounded-xl px-4 py-3 shadow-lg text-sm border ${
+        className={`rounded-xl px-5 py-4 shadow-xl text-sm border flex items-center gap-3 ${
           variant === "error"
-            ? "bg-rose-50 border-rose-200 text-rose-800"
+            ? "bg-white border-rose-100 text-rose-600"
             : variant === "warning"
-            ? "bg-amber-50 border-amber-200 text-amber-800"
-            : "bg-emerald-50 border-emerald-200 text-emerald-800"
+            ? "bg-white border-amber-100 text-amber-600"
+            : "bg-white border-emerald-100 text-emerald-600"
         }`}
       >
-        <div className="flex items-start gap-3">
-          <div>{children}</div>
-          <button
-            onClick={onClose}
-            className="text-xs text-gray-500 hover:text-gray-700 ml-2"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+        <div className={`p-1.5 rounded-full ${variant === 'error' ? 'bg-rose-50' : 'bg-emerald-50'}`}>
+           {variant === 'error' ? <PiXBold /> : <PiCheckBold />}
         </div>
+        <div>{children}</div>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-600 ml-2"
+        >
+          <PiXBold />
+        </button>
       </div>
     </div>
   );
@@ -170,16 +199,6 @@ const getStatusText = (row, statusById = new Map()) => {
   return "";
 };
 
-const toStatusId = (val, statusById, statusByName) => {
-  const asId = normalizeStatusId(val);
-  if (asId != null && statusById.has(asId)) return asId;
-  if (typeof val === "string") {
-    const id = statusByName.get(val.trim().toLowerCase());
-    if (id != null) return id;
-  }
-  return null;
-};
-
 export default function CreateShipmentBill() {
   // dropdown data
   const [shipmentMethods, setShipmentMethods] = useState([]);
@@ -187,7 +206,7 @@ export default function CreateShipmentBill() {
   const [branches, setBranches] = useState([]);
   const [shipmentStatuses, setShipmentStatuses] = useState([]);
 
-  // Redux fallbacks (hooks must be unconditional)
+  // Redux fallbacks
   const selBranchId = useSelector((s) => s.branch?.branchId);
   const selAuthUserBranchId = useSelector((s) => s.auth?.user?.branch_id);
   const selAuthProfileBranchId = useSelector((s) => s.auth?.profile?.branch_id);
@@ -254,7 +273,7 @@ export default function CreateShipmentBill() {
   // Tracks whether current picker is showing USED (search mode)
   const [searchShowsUsed, setSearchShowsUsed] = useState(false);
 
-  // Track cargos committed/saved this session so they don't reappear if backend flag lags
+  // Track cargos committed/saved this session
   const sessionHiddenIdsRef = useRef(new Set());
 
   const fileRef = useRef(null);
@@ -285,7 +304,6 @@ export default function CreateShipmentBill() {
         setStatusList(statusesArr);
         setStatusMaps(buildStatusMaps(statusesArr));
 
-        // Find default status "Shipment Booked"
         const defaultStatus = statusesArr.find(s => s.name?.toLowerCase() === 'shipment booked');
         if (defaultStatus) {
           setDefaultShipmentStatusId(defaultStatus.id);
@@ -299,22 +317,19 @@ export default function CreateShipmentBill() {
     })();
   }, []);
 
-  // Resolve branch & user after profile + branches ready
+  // Resolve branch & user
   useEffect(() => {
     if (!profileObj || !Array.isArray(branches) || branches.length === 0) return;
 
-    // 1) Redux first
     let id = branchFromRedux != null ? Number(branchFromRedux) : null;
     let name = branchNameFromRedux;
 
-    // 2) Profile if Redux empty
     if (id == null || !name) {
       const { id: bid, name: bname } = extractBranchInfo(profileObj, branches);
       if (id == null) id = bid ?? null;
       if (!name) name = bname ?? "";
     }
 
-    // 3) Fallback to first active branch if still missing
     if (id == null && branches.length > 0) {
       id = Number(branches[0]?.id);
       name = String(branches[0]?.branch_name || branches[0]?.name || `#${id}`);
@@ -323,7 +338,6 @@ export default function CreateShipmentBill() {
     if (id != null) setMyBranchId(id);
     if (name) setMyBranchName(name);
 
-    // Resolve user
     const uid = profileObj?.id ?? profileObj?.user?.id ?? profileObj?.data?.user?.id ?? null;
     const uname =
       profileObj?.name ?? profileObj?.user?.name ?? profileObj?.user?.full_name ?? profileObj?.email ?? "";
@@ -345,8 +359,9 @@ export default function CreateShipmentBill() {
     setBookingSearch("");
     setPickSelectedIds([]);
     setPickSelectedMap({});
-    await fetchPickerRows(); // initial load = free list
+    // Initial fetch handled by the useEffect below now
   };
+
   const closePicker = () => {
     setShowPicker(false);
     setResults([]);
@@ -356,6 +371,19 @@ export default function CreateShipmentBill() {
     setPickSelectedMap({});
     setSearchShowsUsed(false);
   };
+
+  /* ---------- NEW: Auto Search Effect ---------- */
+  useEffect(() => {
+    if (!showPicker) return;
+
+    // Debounce: wait 500ms after user stops typing
+    const timeoutId = setTimeout(() => {
+      fetchPickerRows(bookingSearch);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [bookingSearch, showPicker]);
+
 
   /* ---------- helpers: filter out session-hidden & already-added ---------- */
   const notSessionHidden = (rows = []) => {
@@ -387,11 +415,21 @@ export default function CreateShipmentBill() {
       let tableRows = [];
       let usedRows = [];
 
+      // HELPER: Check if row matches query (Booking, Invoice, or Bill)
+      const matchesQuery = (r) => {
+        const needle = qlc;
+        const booking = String(r?.booking_no || "").toLowerCase();
+        const invoice = String(r?.invoice_no || "").toLowerCase();
+        const bill = String(r?.bill_no || "").toLowerCase();
+        return booking.includes(needle) || invoice.includes(needle) || bill.includes(needle);
+      };
+
       if (!hasQuery) {
         // Initial picker / reset: show FREE (0)
         setSearchShowsUsed(false);
-        const resp = await getPhysicalBills({}, false); // sends ?is_shipment=0 // FREE is 0
+        const resp = await getPhysicalBills({}, false); // sends ?is_shipment=0
         tableRows = onlyFree(unwrapArray(resp));
+        
         // hide already saved/hidden this session
         const hidden = sessionHiddenIdsRef.current;
         const addedSet = new Set(addedRows.map((r) => Number(r.id)));
@@ -415,23 +453,20 @@ export default function CreateShipmentBill() {
           getPhysicalBills({ search: queryText }, true),  // ?is_shipment=1
         ]);
 
-        // Free rows for the TABLE
-        tableRows = onlyFree(unwrapArray(freeResp)).filter((r) =>
-          String(r?.booking_no || "").toLowerCase().includes(qlc)
-        );
+        // Free rows for the TABLE (Applied Broader Filter)
+        tableRows = onlyFree(unwrapArray(freeResp)).filter(matchesQuery);
+        
         // Used rows for the NOTE
-        usedRows = unwrapArray(usedResp).filter((r) =>
-          String(r?.booking_no || "").toLowerCase().includes(qlc)
-        );
+        usedRows = unwrapArray(usedResp).filter(matchesQuery);
 
         // Fallbacks if backend ignored 'search'
         if (tableRows.length === 0 && unwrapArray(freeResp).length === 0) {
-          const allFree = onlyFree(unwrapArray(await getPhysicalBills({}, false))); // 0 here
-          tableRows = allFree.filter((r) => String(r?.booking_no || "").toLowerCase().includes(qlc));
+          const allFree = onlyFree(unwrapArray(await getPhysicalBills({}, false)));
+          tableRows = allFree.filter(matchesQuery);
         }
         if (usedRows.length === 0 && unwrapArray(usedResp).length === 0) {
-          const allUsed = unwrapArray(await getPhysicalBills({}, true)); // 1 here
-          usedRows = allUsed.filter((r) => String(r?.booking_no || "").toLowerCase().includes(qlc));
+          const allUsed = unwrapArray(await getPhysicalBills({}, true));
+          usedRows = allUsed.filter(matchesQuery);
         }
 
         // Table rows = FREE matches minus session-hidden / already-added
@@ -440,7 +475,7 @@ export default function CreateShipmentBill() {
         tableRows = tableRows.filter(
           (r) => !hidden.has(Number(r.id)) && !addedSet.has(Number(r.id))
         );
-        setDupeNote(""); // no hidden note in search mode
+        setDupeNote(""); 
       }
 
       setResults(tableRows);
@@ -463,7 +498,7 @@ export default function CreateShipmentBill() {
     return addedRows.slice(start, start + SELECTED_PAGE_SIZE);
   }, [addedRows, selPage]);
 
-  // Clamp page if list shrinks
+  // Clamp page
   useEffect(() => {
     if (selPage > totalSelPages) setSelPage(totalSelPages);
   }, [totalSelPages, selPage]);
@@ -510,8 +545,7 @@ export default function CreateShipmentBill() {
 
   const toggleOnePicker = (row) => {
     const id = Number(row.id);
-
-    if (Number(row?.is_in_cargo_shipment) === 1) return; // now 1 is used
+    if (Number(row?.is_in_cargo_shipment) === 1) return;
     setPickSelectedIds((prev) => {
       if (prev.includes(id)) {
         setPickSelectedMap((m) => {
@@ -540,7 +574,6 @@ export default function CreateShipmentBill() {
     }
 
     const selectedRows = Object.values(pickSelectedMap);
-    // merge into addedRows (unique by id)
     setAddedRows((prev) => {
       const seen = new Set(prev.map((r) => Number(r.id)));
       const merged = [...prev];
@@ -551,12 +584,11 @@ export default function CreateShipmentBill() {
       return merged;
     });
 
-    // hide them locally so they don't show in the picker again
     selectedRows.forEach((r) => sessionHiddenIdsRef.current.add(Number(r.id)));
     setPickSelectedIds([]);
     setPickSelectedMap({});
-    if (bookingSearch.trim()) await fetchPickerRows(bookingSearch);
-    else await fetchPickerRows();
+    // Fetch refreshed list based on current search
+    await fetchPickerRows(bookingSearch);
 
     setToast({ open: true, variant: "success", text: "Saved to list." });
   };
@@ -605,7 +637,7 @@ export default function CreateShipmentBill() {
     }
 
     const payload = {
-      custom_shipment_ids: addedRows.map((r) => Number(r.id)), // physical bills
+      custom_shipment_ids: addedRows.map((r) => Number(r.id)),
       shipment_status_id: Number(formData.shipmentStatus),
       origin_port_id: formData.portOfOrigin,
       destination_port_id: formData.portOfDestination,
@@ -644,7 +676,7 @@ export default function CreateShipmentBill() {
       setOppositeBucket([]);
       setDupeNote("");
       setShowPicker(false);
-      setAddedRows([]); // fresh list
+      setAddedRows([]); 
     } catch (e2) {
       console.error('Error creating shipment:', e2);
       const is422 = Number(e2?.response?.status) === 422;
@@ -672,7 +704,6 @@ export default function CreateShipmentBill() {
   }, [totalPickPages, pickPage]);
 
   /* ---------- derived for Saved panel ---------- */
-  // FIX: Updated to check both total_weight and weight
   const totalAddedWeight = useMemo(
     () => addedRows.reduce((sum, r) => {
        const w = Number(r?.total_weight ?? r?.weight ?? 0);
@@ -688,20 +719,9 @@ export default function CreateShipmentBill() {
     Number(myBranchId) > 0 &&
     !submitting;
 
-  const renderErr = (field) =>
-    Array.isArray(fieldErrors?.[field]) ? (
-      <div className="mt-1 text-xs text-rose-600">{fieldErrors[field].join(", ")}</div>
-    ) : null;
-
   // helpers for import toasts
   const labelForRow = (r) =>
     r?.booking_no || r?.invoice_no || r?.bill_no || r?.invoice || `#${r?.id ?? "?"}`;
-
-  const listForToast = (rows, cap = 6) => {
-    if (!rows?.length) return "";
-    const slice = rows.slice(0, cap).map(labelForRow).join(", ");
-    return rows.length > cap ? `${slice} …(+${rows.length - cap} more)` : slice;
-  };
 
   const handleImportExcel = async (e) => {
     const file = e.target?.files?.[0];
@@ -711,17 +731,14 @@ export default function CreateShipmentBill() {
     setToast({ open: true, variant: "success", text: "Uploading… reading file…" });
 
     try {
-      // Upload file
       const resp = await importCustomShipments(file, {
         branch_id: myBranchId ?? undefined,
         status_id: 13,
       });
 
-      // Assume the response contains the imported rows
       const importedRows = unwrapArray(resp);
 
       if (importedRows.length > 0) {
-        // ✅ Add to Selected Cargos
         setAddedRows(prev => {
           const seen = new Set(prev.map(r => Number(r.id)));
           const merged = [...prev];
@@ -740,14 +757,13 @@ export default function CreateShipmentBill() {
           text: `Imported ${importedRows.length} cargos and added to Selected Cargos.`,
         });
       } else {
-        // Fallback: if no rows returned, try old detection logic
+        // Fallback logic for import
         const beforeResp = await getPhysicalBills({}, false);
         const beforeFree = unwrapArray(beforeResp);
         const beforeFreeIds = new Set(beforeFree.map(r => Number(r.id)));
 
         const afterResp = await getPhysicalBills({}, false);
         const afterFree = unwrapArray(afterResp);
-
         const addedIds = new Set(addedRows.map(r => Number(r.id)));
 
         let newFreeRows = afterFree.filter(r => !beforeFreeIds.has(Number(r.id)));
@@ -767,7 +783,7 @@ export default function CreateShipmentBill() {
           setToast({
             open: true,
             variant: "warning",
-            text: "Import succeeded, but nothing new to add — all cargos already exist or are used.",
+            text: "Import succeeded, but nothing new to add.",
           });
           return;
         }
@@ -791,44 +807,22 @@ export default function CreateShipmentBill() {
         });
       }
     } catch (err) {
-      let errorMessage = "Import failed. Please check your file and try again.";
-
-      if (err.response?.data) {
-        const { message, error, errors } = err.response.data;
-        if (message) {
-          errorMessage = message;
-        } else if (error) {
-          errorMessage = error;
-        }
-
-        const rawError = message || error || "";
-        if (rawError.includes("SQLSTATE") && rawError.includes("Incorrect decimal value")) {
-          errorMessage = "Import failed: One or more rows contain invalid numeric data (e.g., in 'weight' or 'pcs' columns). Please check your file for non-numeric values and try again.";
-        } else if (rawError.includes("SQLSTATE") && rawError.includes("Invalid datetime format")) {
-          errorMessage = "Import failed: One or more rows contain an invalid date format. Please ensure all dates are correct and try again.";
-        } else if (rawError.includes("SQLSTATE")) {
-          errorMessage = "An unexpected database error occurred during import. Please check your file format and data.";
-        }
-
-        if (errors && typeof errors === 'object') {
-          const validationMessages = Object.entries(errors).map(([field, messages]) => 
-            `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`
-          );
-          if (validationMessages.length > 0) {
-            errorMessage = `Validation failed: ${validationMessages.slice(0, 3).join('; ')}${validationMessages.length > 3 ? '...' : ''}`;
-          }
-        }
-      }
-
-      setToast({ open: true, variant: "error", text: errorMessage });
+       // ... existing error handling ...
+      setToast({ open: true, variant: "error", text: "Import failed. Please check your file." });
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
 
+  const formInputClass = "w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all placeholder:text-gray-400";
+  const formSelectClass = "w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all appearance-none";
+
+  const renderErr = (field) =>
+    Array.isArray(fieldErrors?.[field]) ? fieldErrors[field].join(", ") : null;
+
   return (
-    <div className="w-full mx-auto">
+    <div className="w-full mx-auto animate-fade-in-up pb-10">
       <RightToast
         open={toast.open}
         variant={toast.variant}
@@ -837,448 +831,425 @@ export default function CreateShipmentBill() {
         {toast.text}
       </RightToast>
 
-      <div className="bg-white rounded-lg p-6 border">
-        <h2 className="text-xl font-semibold text-gray-800 mb-6 flex gap-2 items-center">
-          <span className="text-[#ED2624]">
-            <PiShippingContainerFill />
-          </span>
-          Create Bill Shipment
-        </h2>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 flex gap-3 items-center">
+            <span className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shadow-sm border border-indigo-100">
+              <PiShippingContainerFill className="text-2xl" />
+            </span>
+            Create Bill Shipment
+          </h2>
+          <p className="text-gray-500 text-sm mt-1 ml-14">
+            Manage your shipment details and cargo manifest
+          </p>
+        </div>
+      </div>
 
-        <form onSubmit={onSubmit}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-            {/* Branch (readonly) */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Branch</label>
-              <input
-                readOnly
-                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-700"
-                value={
-                  myBranchId
-                    ? (myBranchName ? `${myBranchName} (#${myBranchId})` : `#${myBranchId}`)
-                    : "No branch detected"
-                }
-                placeholder="No branch detected"
-              />
-            </div>
+      <form onSubmit={onSubmit}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* --- Section 1: General Info --- */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <SectionTitle icon={PiReceipt} title="General Information" />
+            <div className="space-y-5">
+              
+              {/* Branch & User (Visual only inputs) */}
+              <div className="grid grid-cols-2 gap-4">
+                 <InputGroup label="Branch">
+                    <div className="relative">
+                        <PiBuildings className="absolute left-3 top-3 text-gray-400" />
+                        <input
+                            readOnly
+                            className={`${formInputClass} pl-9 bg-gray-100/70 text-gray-500 cursor-not-allowed`}
+                            value={myBranchId ? (myBranchName || `#${myBranchId}`) : "No Branch"}
+                        />
+                    </div>
+                 </InputGroup>
+                 <InputGroup label="Created By">
+                    <div className="relative">
+                        <PiUserCircle className="absolute left-3 top-3 text-gray-400" />
+                        <input
+                            readOnly
+                            className={`${formInputClass} pl-9 bg-gray-100/70 text-gray-500 cursor-not-allowed`}
+                            value={myUserName || myUserId || "No User"}
+                        />
+                    </div>
+                 </InputGroup>
+              </div>
 
-            {/* Created By (readonly) */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Created By</label>
-              <input
-                readOnly
-                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-700"
-                value={myUserName ? `${myUserName} (#${myUserId ?? "-"})` : (myUserId ?? "")}
-                placeholder="No user detected"
-              />
-            </div>
+              <InputGroup label="Shipment Number" error={renderErr("shipment_number")}>
+                <input
+                    type="text"
+                    name="shipmentNumber"
+                    value={formData.shipmentNumber}
+                    onChange={handleChange}
+                    placeholder="Enter Shipment Number"
+                    className={formInputClass}
+                />
+              </InputGroup>
 
-            {/* Shipment Number */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Shipment Number</label>
-              <input
-                type="text"
-                name="shipmentNumber"
-                value={formData.shipmentNumber}
-                onChange={handleChange}
-                placeholder="Enter Shipment Number"
-                className={`mt-1 block w-full px-4 py-2 border rounded-md ${fieldErrors?.shipment_number ? "border-rose-400" : "border-gray-300"
-                  }`}
-              />
-              {renderErr("shipment_number")}
-            </div>
+              <div className="grid grid-cols-2 gap-4">
+                  <InputGroup label="Date" error={renderErr("created_on")}>
+                    <input
+                        type="date"
+                        name="createdOn"
+                        value={formData.createdOn}
+                        onChange={handleChange}
+                        className={formInputClass}
+                    />
+                  </InputGroup>
 
-            {/* Port of Origin */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Port Of Origin</label>
-              <select
-                name="portOfOrigin"
-                value={formData.portOfOrigin}
-                onChange={handleChange}
-                className={`mt-1 block w-full px-4 py-2 border rounded-md ${fieldErrors?.origin_port_id ? "border-rose-400" : "border-gray-300"
-                  }`}
-              >
-                <option value="">Select</option>
-                {ports.map((port) => (
-                  <option key={port.id} value={String(port.id)}>
-                    {port.name}
-                  </option>
-                ))}
-              </select>
-              {renderErr("origin_port_id")}
-            </div>
-
-            {/* Port of Destination */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Port Of Destination</label>
-              <select
-                name="portOfDestination"
-                value={formData.portOfDestination}
-                onChange={handleChange}
-                className={`mt-1 block w-full px-4 py-2 border rounded-md ${fieldErrors?.destination_port_id ? "border-rose-400" : "border-gray-300"
-                  }`}
-              >
-                <option value="">Select</option>
-                {ports.map((port) => (
-                  <option key={port.id} value={String(port.id)}>
-                    {port.name}
-                  </option>
-                ))}
-              </select>
-              {renderErr("destination_port_id")}
-            </div>
-
-            {/* Shipping Method */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Shipping Method</label>
-              <select
-                name="shippingMethod"
-                value={formData.shippingMethod}
-                onChange={handleChange}
-                className="mt-1 block w-full px-4 py-2 border rounded-md border-gray-300"
-              >
-                <option value="">Select</option>
-                {shipmentMethods.map((m) => (
-                  <option key={m.id} value={String(m.id)}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* AWB / Container No */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">AWB / Container No</label>
-              <input
-                type="text"
-                name="awbNo"
-                value={formData.awbNo}
-                onChange={handleChange}
-                placeholder="Enter AWB or Container No"
-                className={`mt-1 block w-full px-4 py-2 border rounded-md ${fieldErrors?.awb_or_container_number ? "border-rose-400" : "border-gray-300"
-                  }`}
-              />
-              {renderErr("awb_or_container_number")}
-            </div>
-
-            {/* Shipment Date (created_on) */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Shipment Date</label>
-              <input
-                type="date"
-                name="createdOn"
-                value={formData.createdOn}
-                onChange={handleChange}
-                className={`mt-1 block w-full px-4 py-2 border rounded-md ${fieldErrors?.created_on ? "border-rose-400" : "border-gray-300"
-                  }`}
-              />
-              {renderErr("created_on")}
-            </div>
-
-            {/* Clearing Agent */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Clearing Agent</label>
-              <select
-                name="clearingAgent"
-                value={formData.clearingAgent}
-                onChange={handleChange}
-                className="mt-1 block w-full px-4 py-2 border rounded-md border-gray-300"
-              >
-                <option value="">Select Agent</option>
-                {unwrapArray(branches).map((b) => (
-                  <option key={b.id} value={String(b.id)}>
-                    {b.branch_name || b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Shipment Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Shipment Status</label>
-              <select
-                name="shipmentStatus"
-                value={formData.shipmentStatus}
-                onChange={handleChange}
-                disabled
-                className={`mt-1 block w-full px-4 py-2 border rounded-md bg-gray-100 text-gray-700 ${fieldErrors?.shipment_status_id ? "border-rose-400" : "border-gray-300"
-                  }`}
-              >
-                <option value="">Select Status</option>
-                {shipmentStatuses.map((st) => (
-                  <option key={st.id} value={String(st.id)}>
-                    {st.name}
-                  </option>
-                ))}
-              </select>
-              {renderErr("shipment_status_id")}
-            </div>
-
-            {/* License Details */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">License Details</label>
-              <input
-                type="text"
-                name="licenseDetails"
-                value={formData.licenseDetails}
-                onChange={handleChange}
-                placeholder="Enter License Details"
-                className="mt-1 block w-full px-4 py-2 border rounded-md border-gray-300"
-              />
-            </div>
-
-            {/* Exchange Rate */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Exchange Rate</label>
-              <input
-                type="text"
-                name="exchangeRate"
-                value={formData.exchangeRate}
-                onChange={handleChange}
-                placeholder="Enter Exchange Rate"
-                className="mt-1 block w-full px-4 py-2 border rounded-md border-gray-300"
-              />
-            </div>
-
-            {/* Shipment Details (remarks) */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Shipment Details</label>
-              <input
-                type="text"
-                name="shipmentDetails"
-                value={formData.shipmentDetails}
-                onChange={handleChange}
-                placeholder="Enter Shipment Details"
-                className="mt-1 block w-full px-4 py-2 border rounded-md border-gray-300"
-              />
+                  <InputGroup label="Status" error={renderErr("shipment_status_id")}>
+                    <select
+                        name="shipmentStatus"
+                        value={formData.shipmentStatus}
+                        onChange={handleChange}
+                        disabled
+                        className={`${formSelectClass} bg-gray-100 text-gray-500 cursor-not-allowed`}
+                    >
+                        <option value="">Select Status</option>
+                        {shipmentStatuses.map((st) => (
+                        <option key={st.id} value={String(st.id)}>{st.name}</option>
+                        ))}
+                    </select>
+                  </InputGroup>
+              </div>
             </div>
           </div>
 
-          {/* --- Saved (Added) Cargos --- */}
-          <div className="mt-6 rounded-xl border bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b">
-              <div className="flex items-center gap-3">
-                <h3 className="font-semibold">
-                  Selected Cargos <span className="text-gray-500">({addedRows.length})</span>
-                </h3>
-                <div className="text-sm text-gray-600">
-                  Total weight: <b>{totalAddedWeight.toFixed(3)}</b> kg
+          {/* --- Section 2: Route & Logistics --- */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+             <SectionTitle icon={PiAirplaneTiltFill} title="Route & Logistics" />
+             <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                    <InputGroup label="Origin Port" error={renderErr("origin_port_id")}>
+                        <select
+                            name="portOfOrigin"
+                            value={formData.portOfOrigin}
+                            onChange={handleChange}
+                            className={formSelectClass}
+                        >
+                            <option value="">Select Origin</option>
+                            {ports.map((port) => (
+                            <option key={port.id} value={String(port.id)}>{port.name}</option>
+                            ))}
+                        </select>
+                    </InputGroup>
+
+                    <InputGroup label="Destination" error={renderErr("destination_port_id")}>
+                        <select
+                            name="portOfDestination"
+                            value={formData.portOfDestination}
+                            onChange={handleChange}
+                            className={formSelectClass}
+                        >
+                            <option value="">Select Dest.</option>
+                            {ports.map((port) => (
+                            <option key={port.id} value={String(port.id)}>{port.name}</option>
+                            ))}
+                        </select>
+                    </InputGroup>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {showPicker && (
-                  <button
-                    type="button"
-                    onClick={closePicker}
-                    className="px-3 py-2 rounded border text-gray-700 hover:bg-gray-50"
-                  >
-                    Done
-                  </button>
-                )}
 
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="px-3 py-2 rounded border hover:bg-gray-50 disabled:opacity-60"
-                  disabled={importing}
-                >
-                  {importing ? "Importing…" : "Import Excel"}
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={handleImportExcel}
-                />
+                <InputGroup label="Shipping Method">
+                    <select
+                        name="shippingMethod"
+                        value={formData.shippingMethod}
+                        onChange={handleChange}
+                        className={formSelectClass}
+                    >
+                        <option value="">Select Method</option>
+                        {shipmentMethods.map((m) => (
+                        <option key={m.id} value={String(m.id)}>{m.name}</option>
+                        ))}
+                    </select>
+                </InputGroup>
 
-                <button
-                  type="button"
-                  onClick={openPicker}
-                  className="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700"
-                >
-                  Add Row
-                </button>
-                {addedRows.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setAddedRows([])}
-                    className="px-3 py-2 rounded border hover:bg-gray-50"
-                  >
-                    Clear list
-                  </button>
-                )}
-              </div>
-            </div>
+                <InputGroup label="AWB / Container No" error={renderErr("awb_or_container_number")}>
+                    <input
+                        type="text"
+                        name="awbNo"
+                        value={formData.awbNo}
+                        onChange={handleChange}
+                        placeholder="e.g. MAWB-12345678"
+                        className={formInputClass}
+                    />
+                </InputGroup>
+             </div>
+          </div>
 
-            {addedRows.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-500">
-                Nothing added yet. Click <b>Add Row</b> to pick cargos, then <b>Save Selected to List</b>.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full table-auto">
-                  <thead className="bg-gray-200 text-sm text-gray-700 border-y border-gray-300">
-                    <tr>
-                      <th className="py-2 px-4 border">SL No</th>
-                      <th className="py-2 px-4 border">Invoice / Bill No</th>
-                      <th className="py-2 px-4 border">Pcs</th>
-                      <th className="py-2 px-4 border">Weight (kg)</th>
-                      <th className="py-2 px-4 border">Shipment Method</th>
-                      <th className="py-2 px-4 border">Destination</th>
-                      <th className="py-2 px-4 border">Date</th>
-                      <th className="py-2 px-4 border">Status</th>
-                      <th className="py-2 px-4 border">Action</th>
-                    </tr>
-                  </thead>
+          {/* --- Section 3: Financials & Remarks --- */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+             <SectionTitle icon={PiFloppyDiskBack} title="Financials & Details" />
+             <div className="space-y-5">
+                <InputGroup label="Clearing Agent">
+                    <select
+                        name="clearingAgent"
+                        value={formData.clearingAgent}
+                        onChange={handleChange}
+                        className={formSelectClass}
+                    >
+                        <option value="">Select Agent</option>
+                        {unwrapArray(branches).map((b) => (
+                        <option key={b.id} value={String(b.id)}>{b.branch_name || b.name}</option>
+                        ))}
+                    </select>
+                </InputGroup>
 
-                  <tbody className="text-sm text-gray-700">
-                    {addedRows.length === 0 && (
-                      <tr>
-                        <td className="py-6 px-4 text-center text-gray-500" colSpan={9}>
-                          No cargos added yet. Use "Add Row" or "Import Excel" to add cargos.
-                        </td>
-                      </tr>
+                <div className="grid grid-cols-2 gap-4">
+                    <InputGroup label="License No">
+                        <input
+                            type="text"
+                            name="licenseDetails"
+                            value={formData.licenseDetails}
+                            onChange={handleChange}
+                            placeholder="Optional"
+                            className={formInputClass}
+                        />
+                    </InputGroup>
+                    <InputGroup label="Exchange Rate">
+                        <input
+                            type="text"
+                            name="exchangeRate"
+                            value={formData.exchangeRate}
+                            onChange={handleChange}
+                            placeholder="0.00"
+                            className={formInputClass}
+                        />
+                    </InputGroup>
+                </div>
+
+                <InputGroup label="Remarks / Details">
+                    <textarea
+                        name="shipmentDetails"
+                        value={formData.shipmentDetails}
+                        onChange={handleChange}
+                        rows={3}
+                        placeholder="Additional notes..."
+                        className={`${formInputClass} resize-none`}
+                    />
+                </InputGroup>
+             </div>
+          </div>
+
+        </div>
+
+        {/* --- Saved (Added) Cargos --- */}
+        <div className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Header for Cargo List */}
+            <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between bg-gray-50/50">
+                <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl">
+                        <PiShippingContainerFill />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-gray-800">Shipment Content</h3>
+                        <p className="text-xs text-gray-500">
+                            {addedRows.length} Items Selected • Total Weight: <span className="font-mono font-medium text-gray-700">{totalAddedWeight.toFixed(3)} kg</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                    {showPicker && (
+                        <button type="button" onClick={closePicker} className="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 text-sm font-medium border border-transparent hover:border-gray-200 transition-all">
+                            Done Adding
+                        </button>
                     )}
 
+                    <button
+                        type="button"
+                        onClick={() => fileRef.current?.click()}
+                        disabled={importing}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 bg-white transition-colors text-sm font-medium"
+                    >
+                        {importing ? <span className="animate-spin text-lg">C</span> : <PiFileXls className="text-lg" />}
+                        Import Excel
+                    </button>
+                    <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportExcel} />
+
+                    <button
+                        type="button"
+                        onClick={openPicker}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all text-sm font-medium"
+                    >
+                        <PiPlusBold />
+                        Add Items
+                    </button>
+                    {addedRows.length > 0 && (
+                        <button type="button" onClick={() => setAddedRows([])} className="px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-lg text-sm border border-transparent hover:border-rose-100 transition-all">
+                            Clear All
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Added Rows Table */}
+            <div className="overflow-x-auto min-h-[150px]">
+                {addedRows.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 flex flex-col items-center">
+                    <PiShippingContainerFill className="text-5xl opacity-20 mb-3" />
+                    <p>No cargos added yet.</p>
+                    <p className="text-xs mt-1">Click "Add Items" or "Import Excel" to begin.</p>
+                </div>
+                ) : (
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                    <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-200">
+                        <th className="py-3 px-6 font-semibold">#</th>
+                        <th className="py-3 px-6 font-semibold">Bill Details</th>
+                        <th className="py-3 px-6 font-semibold text-center">Pcs</th>
+                        <th className="py-3 px-6 font-semibold text-center">Weight (kg)</th>
+                        <th className="py-3 px-6 font-semibold">Method</th>
+                        <th className="py-3 px-6 font-semibold">Dest.</th>
+                        <th className="py-3 px-6 font-semibold">Date</th>
+                        <th className="py-3 px-6 font-semibold">Status</th>
+                        <th className="py-3 px-6 font-semibold text-center">Action</th>
+                    </tr>
+                    </thead>
+                    <tbody className="text-sm text-gray-700 divide-y divide-gray-100">
                     {visibleAddedRows.map((row, idx) => {
-                      const statusTextVal = getStatusText(row, statusMaps.byId);
-
-                      return (
-                        <tr key={row.id} className="hover:bg-gray-50">
-                          <td className="py-2 px-4 border">{selBaseIndex + idx + 1}</td>
-                          <td className="py-2 px-4 border">{getBillNo(row) || "—"}</td>
-                          <td className="py-2 px-4 border">{getPcs(row) ?? "—"}</td>
-                          <td className="py-2 px-4 border">{getWeight(row) ?? "—"}</td>
-                          <td className="py-2 px-4 border">{getMethod(row) || "—"}</td>
-                          <td className="py-2 px-4 border">{getDest(row) || "—"}</td>
-                          <td className="py-2 px-4 border">{getDate(row) || "—"}</td>
-                          <td className="py-2 px-4 border">
-                            <span className={`px-2 py-1 text-xs rounded-lg ${statusPill(statusTextVal)}`}>
-                              {statusTextVal || "—"}
-                            </span>
-                          </td>
-                          <td className="py-2 px-4 border text-center">
-                            <button
-                              type="button"
-                              onClick={() => removeFromAdded(row.id)}
-                              className="text-rose-600 hover:text-rose-800 text-xs"
-                            >
-                              Remove
-                            </button>
-                          </td>
+                        const statusTextVal = getStatusText(row, statusMaps.byId);
+                        return (
+                        <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="py-3 px-6 text-gray-400 font-mono text-xs">{selBaseIndex + idx + 1}</td>
+                            <td className="py-3 px-6 font-medium text-gray-800">{getBillNo(row) || "—"}</td>
+                            <td className="py-3 px-6 text-center">{getPcs(row) ?? "—"}</td>
+                            <td className="py-3 px-6 text-center">{getWeight(row) ?? "—"}</td>
+                            <td className="py-3 px-6 text-xs">{getMethod(row) || "—"}</td>
+                            <td className="py-3 px-6 text-xs">{getDest(row) || "—"}</td>
+                            <td className="py-3 px-6 text-xs text-gray-500">{getDate(row) || "—"}</td>
+                            <td className="py-3 px-6">
+                                <span className={statusPill(statusTextVal)}>
+                                    {statusTextVal || "—"}
+                                </span>
+                            </td>
+                            <td className="py-3 px-6 text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => removeFromAdded(row.id)}
+                                    className="p-2 rounded-full text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                    title="Remove row"
+                                >
+                                    <PiTrash className="text-lg" />
+                                </button>
+                            </td>
                         </tr>
-                      );
+                        );
                     })}
-                  </tbody>
+                    </tbody>
                 </table>
-                <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50 text-sm">
-                  <div>
-                    Page <span className="font-medium">{selPage}</span> of{" "}
-                    <span className="font-medium">{totalSelPages}</span> •{" "}
-                    <span className="text-gray-500">{addedRows.length}</span> items
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
-                      onClick={() => setSelPage((p) => Math.max(1, p - 1))}
-                      disabled={selPage === 1}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
-                      onClick={() => setSelPage((p) => Math.min(totalSelPages, p + 1))}
-                      disabled={selPage === totalSelPages}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* Picker panel (hidden until Add Row) */}
-            {showPicker && (
-              <div className="border-t">
-                <div className="p-4 bg-gray-50">
-                  <h4 className="font-medium mb-3">Add cargos (search by Booking No.)</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    <input
-                      className="border rounded-lg px-3 py-2 sm:col-span-2"
-                      value={bookingSearch}
-                      onChange={(e) => setBookingSearch(e.target.value)}
-                      placeholder="Enter booking number"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fetchPickerRows(bookingSearch)}
-                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-                    >
-                      {loadingList ? "Searching…" : "Search"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setBookingSearch(""); fetchPickerRows(""); }}
-                      className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                  {dupeNote && (
-                    <div className="mt-2 text-xs text-gray-500">{dupeNote}</div>
-                  )}
-
-                  {oppositeBucket.length > 0 && (
-                    <div className="mt-3 text-xs">
-                      <div className="font-medium text-rose-700">
-                        {searchShowsUsed
-                          ? `Also found (not in shipment) – ${oppositeBucket.length}:`
-                          : `Already in another shipment (${oppositeBucket.length}):`}
-                      </div>
-                      <ul className="mt-1 grid gap-1 sm:grid-cols-2 md:grid-cols-3 text-rose-700/90">
-                        {oppositeBucket.slice(0, 12).map((r) => (
-                          <li key={`opp-${r.id}`} className="flex items-center gap-2">
-                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-600" />
-                            <span>#{r.id} – {r.booking_no || "(no booking)"}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {oppositeBucket.length > 12 && (
-                        <div className="mt-1 text-[11px] text-rose-500">and more… refine your search.</div>
-                      )}
+                 {/* Pagination for Added List */}
+                 {addedRows.length > 0 && (
+                    <div className="flex items-center justify-between px-6 py-3 border-t bg-gray-50 text-xs text-gray-500">
+                    <div>
+                        Page <span className="font-medium">{selPage}</span> of{" "}
+                        <span className="font-medium">{totalSelPages}</span> •{" "}
+                        <span>{addedRows.length} items</span>
                     </div>
-                  )}
+                    <div className="flex items-center gap-2">
+                        <button
+                        type="button"
+                        className="rounded border px-3 py-1 bg-white hover:bg-gray-100 disabled:opacity-50"
+                        onClick={() => setSelPage((p) => Math.max(1, p - 1))}
+                        disabled={selPage === 1}
+                        >
+                        Prev
+                        </button>
+                        <button
+                        type="button"
+                        className="rounded border px-3 py-1 bg-white hover:bg-gray-100 disabled:opacity-50"
+                        onClick={() => setSelPage((p) => Math.min(totalSelPages, p + 1))}
+                        disabled={selPage === totalSelPages}
+                        >
+                        Next
+                        </button>
+                    </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Picker Panel (Slide/Fade In) */}
+            {showPicker && (
+              <div className="border-t-2 border-indigo-100 bg-slate-50 animate-fade-in">
+                <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                         <h4 className="font-semibold text-gray-800 flex items-center gap-2">
+                            <PiMagnifyingGlass className="text-indigo-600" />
+                            Search & Add Cargo
+                         </h4>
+                         <button onClick={closePicker} className="text-gray-400 hover:text-gray-600"><PiXBold /></button>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative max-w-2xl">
+                        <input
+                            className="w-full pl-10 pr-24 py-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none shadow-sm transition-all"
+                            value={bookingSearch}
+                            onChange={(e) => setBookingSearch(e.target.value)}
+                            placeholder="Type Booking No, Invoice No, or Bill No..."
+                            autoFocus
+                        />
+                        <PiMagnifyingGlass className="absolute left-3.5 top-3.5 text-gray-400 text-lg" />
+                        {loadingList && (
+                            <span className="absolute right-24 top-3.5 text-xs text-indigo-500 font-medium animate-pulse">
+                                Searching...
+                            </span>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => { setBookingSearch(""); fetchPickerRows(""); }}
+                            className="absolute right-2 top-2 px-3 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                        >
+                            Reset
+                        </button>
+                    </div>
+
+                    {/* Feedback Messages */}
+                    {dupeNote && <div className="mt-2 text-xs text-amber-600 font-medium px-1">{dupeNote}</div>}
+                    {oppositeBucket.length > 0 && (
+                        <div className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-lg">
+                            <div className="text-xs font-bold text-rose-700 mb-1">
+                                {searchShowsUsed ? "Matches found (Excluded from current view):" : "Found in other shipments:"}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {oppositeBucket.slice(0, 5).map((r) => (
+                                    <span key={r.id} className="text-[10px] bg-white border border-rose-200 text-rose-600 px-1.5 py-0.5 rounded">
+                                        #{getBillNo(r)}
+                                    </span>
+                                ))}
+                                {oppositeBucket.length > 5 && <span className="text-[10px] text-rose-500 italic">+ {oppositeBucket.length - 5} more</span>}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                <div className="bg-white overflow-x-auto">
+                <div className="bg-white border-t border-gray-200 overflow-x-auto shadow-inner max-h-[400px]">
                   <table className="min-w-full table-auto">
-                    <thead className="bg-gray-200 text-sm text-gray-700 border-y border-gray-300">
+                    <thead className="bg-gray-100 text-xs text-gray-500 uppercase tracking-wider sticky top-0 z-10">
                       <tr>
-                        <th className="py-2 px-4 border">
+                        <th className="py-3 px-4 border-b w-12 text-center">
                           <input
                             type="checkbox"
+                            className="rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
                             checked={results.length > 0 && pickAllChecked}
                             onChange={toggleAllPicker}
                           />
                         </th>
-                        <th className="py-2 px-4 border">SL No</th>
-                        <th className="py-2 px-4 border">Invoice / Bill No</th>
-                        <th className="py-2 px-4 border">Pcs</th>
-                        <th className="py-2 px-4 border">Weight (kg)</th>
-                        <th className="py-2 px-4 border">Shipment Method</th>
-                        <th className="py-2 px-4 border">Destination</th>
-                        <th className="py-2 px-4 border">Date</th>
-                        <th className="py-2 px-4 border">Status</th>
+                        <th className="py-3 px-4 border-b">Bill Info</th>
+                        <th className="py-3 px-4 border-b text-center">Stats</th>
+                        <th className="py-3 px-4 border-b">Route</th>
+                        <th className="py-3 px-4 border-b">Date</th>
+                        <th className="py-3 px-4 border-b">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="text-sm text-gray-700">
-                      {results.length === 0 && !loadingList && addedRows.length === 0 && (
+                    <tbody className="text-sm text-gray-700 divide-y divide-gray-100">
+                      {results.length === 0 && !loadingList && (
                         <tr>
-                          <td className="py-6 px-4 text-center text-gray-500" colSpan={9}>
-                            No cargos. Try searching by booking number.
+                          <td className="py-8 px-4 text-center text-gray-400" colSpan={6}>
+                            No matching cargos found.
                           </td>
                         </tr>
                       )}
@@ -1289,27 +1260,35 @@ export default function CreateShipmentBill() {
                         const statusStr = getStatusText(row, statusMaps.byId);
 
                         return (
-                          <tr key={row.id} className="hover:bg-gray-50">
-                            <td className="py-2 px-4 border">
+                          <tr 
+                            key={row.id} 
+                            onClick={() => !isUsed && toggleOnePicker(row)}
+                            className={`transition-colors cursor-pointer ${isUsed ? 'bg-gray-50 opacity-60 cursor-not-allowed' : checked ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}
+                          >
+                            <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleOnePicker(row)}
                                 disabled={isUsed}
-                                title={isUsed ? "Already in a shipment" : ""}
+                                className="rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
                               />
                             </td>
-                            {/* SL No (1-based index) */}
-                            <td className="py-2 px-4 border">{baseIndex + idx + 1}</td>
-
-                            <td className="py-2 px-4 border">{getBillNo(row) || "—"}</td>
-                            <td className="py-2 px-4 border">{getPcs(row) ?? "—"}</td>
-                            <td className="py-2 px-4 border">{getWeight(row) ?? "—"}</td>
-                            <td className="py-2 px-4 border">{getMethod(row) || "—"}</td>
-                            <td className="py-2 px-4 border">{getDest(row) || "—"}</td>
-                            <td className="py-2 px-4 border">{fmtDate(getDateISO(row)) || "—"}</td>
-                            <td className="py-2 px-4 border">
-                              <span className={`px-2 py-1 text-xs rounded-lg ${statusPill(statusStr)}`}>
+                            <td className="py-3 px-4">
+                                <div className="font-medium text-gray-800">{getBillNo(row) || "—"}</div>
+                                <div className="text-xs text-gray-400">SL: {baseIndex + idx + 1}</div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                                <div className="text-xs text-gray-600">{getPcs(row) ?? "-"} pcs</div>
+                                <div className="text-xs text-gray-400">{getWeight(row) ?? "-"} kg</div>
+                            </td>
+                            <td className="py-3 px-4">
+                                <div className="text-xs text-gray-800">{getDest(row)}</div>
+                                <div className="text-[10px] text-gray-400 uppercase">{getMethod(row)}</div>
+                            </td>
+                            <td className="py-3 px-4 text-xs text-gray-500">{fmtDate(getDateISO(row))}</td>
+                            <td className="py-3 px-4">
+                              <span className={statusPill(statusStr)}>
                                 {statusStr || "—"}
                               </span>
                             </td>
@@ -1320,53 +1299,48 @@ export default function CreateShipmentBill() {
                   </table>
                 </div>
 
-                <div className="flex items-center justify-end gap-3 px-4 py-3 border-t bg-gray-50">
-                  <button
-                    type="button"
-                    onClick={saveSelectedToList}
-                    className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                    disabled={savingMarks}
-                  >
-                    {savingMarks ? "Saving…" : "Save Selected to List"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearPickerSelection}
-                    className="px-4 py-2 rounded border hover:bg-gray-100"
-                  >
-                    Clear Selection
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closePicker}
-                    className="px-4 py-2 rounded border hover:bg-gray-100"
-                  >
-                    Close Picker
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50 text-sm">
-                  <div>
-                    Page <span className="font-medium">{safePickPage}</span> of{" "}
-                    <span className="font-medium">{totalPickPages}</span> •{" "}
-                    <span className="text-gray-500">{results.length}</span> items
+                {/* Picker Footer */}
+                <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+                  <div className="text-xs text-gray-500">
+                    Page <b>{safePickPage}</b> of <b>{totalPickPages}</b>
                   </div>
-                  <div className="flex items-center gap-2">
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="flex gap-1">
+                        <button
+                        type="button"
+                        className="p-1.5 rounded border bg-white hover:bg-gray-100 disabled:opacity-50 text-xs font-medium"
+                        onClick={() => setPickPage((p) => Math.max(1, p - 1))}
+                        disabled={safePickPage === 1}
+                        >
+                        Prev
+                        </button>
+                        <button
+                        type="button"
+                        className="p-1.5 rounded border bg-white hover:bg-gray-100 disabled:opacity-50 text-xs font-medium"
+                        onClick={() => setPickPage((p) => Math.min(totalPickPages, p + 1))}
+                        disabled={safePickPage === totalPickPages}
+                        >
+                        Next
+                        </button>
+                    </div>
+                    
+                    <div className="w-px h-6 bg-gray-300 mx-2"></div>
+
                     <button
-                      type="button"
-                      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
-                      onClick={() => setPickPage((p) => Math.max(1, p - 1))}
-                      disabled={safePickPage === 1}
+                        type="button"
+                        onClick={clearPickerSelection}
+                        className="text-gray-500 hover:text-gray-700 text-sm px-3"
                     >
-                      Prev
+                        Clear
                     </button>
                     <button
-                      type="button"
-                      className="rounded border px-3 py-1.5 hover:bg-gray-100 disabled:opacity-50"
-                      onClick={() => setPickPage((p) => Math.min(totalPickPages, p + 1))}
-                      disabled={safePickPage === totalPickPages}
+                        type="button"
+                        onClick={saveSelectedToList}
+                        className="px-6 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm transition-all"
+                        disabled={savingMarks || pickSelectedIds.length === 0}
                     >
-                      Next
+                        {savingMarks ? "Saving…" : `Add ${pickSelectedIds.length} Selected`}
                     </button>
                   </div>
                 </div>
@@ -1374,60 +1348,51 @@ export default function CreateShipmentBill() {
             )}
           </div>
 
-          {/* --- Actions --- */}
-          <div className="mt-6 flex items-center justify-end gap-3">
+          {/* --- Bottom Actions --- */}
+          <div className="mt-8 flex items-center justify-end gap-4 pb-20">
+            <button
+              type="button"
+              onClick={() => {
+                if(window.confirm("Are you sure you want to reset the form?")) {
+                    setFormData({
+                    shipmentNumber: "",
+                    awbNo: "",
+                    licenseDetails: "",
+                    exchangeRate: "",
+                    shipmentDetails: "",
+                    portOfOrigin: "",
+                    portOfDestination: "",
+                    shippingMethod: "",
+                    createdOn: today(),
+                    clearingAgent: "",
+                    shipmentStatus: defaultShipmentStatusId ? String(defaultShipmentStatusId) : "",
+                    });
+                    setBookingSearch("");
+                    setResults([]);
+                    setOppositeBucket([]);
+                    setFieldErrors({});
+                    setDupeNote("");
+                    setShowPicker(false);
+                    setAddedRows([]);
+                    setPickSelectedIds([]);
+                    setPickSelectedMap({});
+                    setSearchShowsUsed(false);
+                }
+              }}
+              className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+            >
+              Reset Form
+            </button>
             <button
               type="submit"
               disabled={!canSubmit}
-              className={`px-6 py-2 rounded-lg text-white transition-colors ${!canSubmit ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+              className={`px-8 py-2.5 rounded-lg text-white font-semibold shadow-md transition-all transform hover:-translate-y-0.5 ${!canSubmit ? "bg-gray-400 cursor-not-allowed shadow-none" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
                 }`}
             >
               {submitting ? "Creating..." : "Create Shipment"}
             </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setFormData({
-                  shipmentNumber: "",
-                  awbNo: "",
-                  licenseDetails: "",
-                  exchangeRate: "",
-                  shipmentDetails: "",
-                  portOfOrigin: "",
-                  portOfDestination: "",
-                  shippingMethod: "",
-                  createdOn: today(),
-                  clearingAgent: "",
-                  shipmentStatus: defaultShipmentStatusId ? String(defaultShipmentStatusId) : "",
-                });
-                setBookingSearch("");
-                setResults([]);
-                setOppositeBucket([]);
-                setFieldErrors({});
-                setDupeNote("");
-                setShowPicker(false);
-                setAddedRows([]);
-                setPickSelectedIds([]);
-                setPickSelectedMap({});
-                setSearchShowsUsed(false);
-              }}
-              className="px-6 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700"
-            >
-              Reset
-            </button>
           </div>
-
-          {!canSubmit && (
-            <div className="text-xs text-gray-500 mt-1">
-              {Number(formData.shipmentStatus) <= 0 && "Select a shipment status. "}
-              {addedRows.length === 0 && "Add at least one cargo to the list. "}
-              {!(Number(myUserId) > 0) && "No user detected. "}
-              {!(Number(myBranchId) > 0) && "No branch detected. "}
-            </div>
-          )}
-        </form>
-      </div>
+      </form>
     </div>
   );
 }

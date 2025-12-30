@@ -17,18 +17,14 @@ const api = axios.create({
 // 3. Request Interceptor
 api.interceptors.request.use(
   (config) => {
-    // Attach Token
     const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Fix for File Uploads (FormData)
-    // If sending a file, delete 'Content-Type' so the browser can set the correct boundary
     if (config.data instanceof FormData) {
       delete config.headers["Content-Type"];
     }
-
     return config;
   },
   (error) => {
@@ -36,7 +32,6 @@ api.interceptors.request.use(
   }
 );
 
-// 4. Response Interceptor
 api.interceptors.response.use(
   (response) => {
     // Return successful response
@@ -45,18 +40,17 @@ api.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
 
-    // Global 401 Handling (Auto-Logout)
     if (status === 401) {
       try {
-        clearToken(); // Remove invalid token from storage
-        // Trigger logout event for UI to redirect to login
+
+        clearToken();
         window.dispatchEvent(new Event("auth:unauthorized"));
+
       } catch (e) {
         console.error("Error clearing token:", e);
       }
     }
 
-    // Reject promise so components can handle specific errors (e.g., showing toasts)
     return Promise.reject(error);
   }
 );
