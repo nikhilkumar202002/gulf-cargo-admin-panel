@@ -5,7 +5,7 @@ import { getProfile } from "../../services/authService";
 import { getCountries, getStatesByCountry, getDistrictsByState, getPhoneCodes, getDocumentTypes } from "../../services/coreService";
 import { updateParty } from "../../services/partyService";
 
-/* Helpers – same as ReceiverForm */
+/* Helpers */
 import {
   normalizeList,
   getDocId,
@@ -21,15 +21,15 @@ import {
 
 const CUSTOMER_TYPE_RECEIVER = 2;
 const fieldBase =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 outline-none ring-emerald-500 focus:ring";
-const fieldDisabled = "disabled:cursor-not-allowed disabled:bg-slate-50";
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 outline-none ring-emerald-500 focus:ring focus:border-emerald-500 transition-colors";
+const fieldDisabled = "disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500";
 
 /**
  * Splits an E.164 number into a country code and local number.
  */
 function splitE164(value, codeListDigits) {
   if (!value) return null;
-  const s = String(value).replace(/\D/g, ""); 
+  const s = String(value).replace(/\D/g, "");
   if (!s) return null;
 
   for (const code of codeListDigits) {
@@ -37,7 +37,7 @@ function splitE164(value, codeListDigits) {
       return { code, local: s.substring(code.length) };
     }
   }
-  return null; 
+  return null;
 }
 
 function detectCodeFromFreeText(value, codeListDigits) {
@@ -86,7 +86,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
   const [form, setForm] = React.useState({
     name: "",
     whatsappNumber: "",
-    useSameForContact: false,
+    useSameAsContact: false, // Changed logic: WA same as Contact
     contactNumber: "",
     receiverIdType: "",
     receiverId: "",
@@ -179,25 +179,35 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
   React.useEffect(() => {
     if (!initialParty || !phoneCodeOptions.length) return;
 
+    let waLocal = "";
+    let waCodeVal = "966";
+    let contactLocal = "";
+    let contactCodeVal = "966";
+
     const wa = splitE164(initialParty.whatsapp_number, phoneCodeOptions);
     if (wa) {
-      setWhatsappCode(wa.code);
-      setForm((prev) => ({ ...prev, whatsappNumber: wa.local }));
+      waCodeVal = wa.code;
+      waLocal = wa.local;
     } else {
-      setForm((prev) => ({ ...prev, whatsappNumber: onlyDigits(initialParty.whatsapp_number || "") }));
+      waLocal = onlyDigits(initialParty.whatsapp_number || "");
     }
 
     const contact = splitE164(initialParty.contact_number, phoneCodeOptions);
     if (contact) {
-      setContactCode(contact.code);
-      setForm((prev) => ({ ...prev, contactNumber: contact.local }));
+      contactCodeVal = contact.code;
+      contactLocal = contact.local;
     } else {
-      setForm((prev) => ({ ...prev, contactNumber: onlyDigits(initialParty.contact_number || "") }));
+      contactLocal = onlyDigits(initialParty.contact_number || "");
     }
+
+    setWhatsappCode(waCodeVal);
+    setContactCode(contactCodeVal);
 
     setForm((prev) => ({
       ...prev,
       name: initialParty.name || "",
+      whatsappNumber: waLocal,
+      contactNumber: contactLocal,
       receiverIdType: initialParty.document_type_id ? String(initialParty.document_type_id) : "",
       receiverId: initialParty.document_id || "",
       country: initialParty.country_id ? String(initialParty.country_id) : "",
@@ -207,11 +217,9 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
       post: initialParty.post || "",
       postal_code: initialParty.postal_code || "",
       address: initialParty.address || "",
+      // If contact & WA are same, check the box
+      useSameAsContact: (contactLocal === waLocal && contactCodeVal === waCodeVal && contactLocal !== "")
     }));
-
-    if (initialParty.whatsapp_number && initialParty.whatsapp_number === initialParty.contact_number) {
-      setForm(prev => ({ ...prev, useSameForContact: true }));
-    }
   }, [initialParty, phoneCodeOptions]);
 
   const waTypeahead = useSelectDigitTypeahead(phoneCodeOptions, setWhatsappCode);
@@ -310,9 +318,10 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
     if (type === "checkbox") {
       return setForm((f) => {
         const next = { ...f, [name]: checked };
-        if (name === "useSameForContact" && checked) {
-          next.contactNumber = f.whatsappNumber;
-          setContactCode((prev) => (prev ? prev : whatsappCode));
+        // Logic: if checked, copy Contact -> WA
+        if (name === "useSameAsContact" && checked) {
+          next.whatsappNumber = f.contactNumber;
+          setWhatsappCode(contactCode);
         }
         return next;
       });
@@ -320,13 +329,13 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
     setForm((f) => ({ ...f, [name]: value }));
   };
 
-  /* keep contact mirrored when checkbox ON */
+  /* keep WA mirrored when checkbox ON */
   React.useEffect(() => {
-    if (form.useSameForContact) {
-      setForm((f) => ({ ...f, contactNumber: f.whatsappNumber }));
-      setContactCode(whatsappCode);
+    if (form.useSameAsContact) {
+      setForm((f) => ({ ...f, whatsappNumber: f.contactNumber }));
+      setWhatsappCode(contactCode);
     }
-  }, [form.useSameForContact, form.whatsappNumber, whatsappCode]);
+  }, [form.useSameAsContact, form.contactNumber, contactCode]);
 
   /* when country changes, update phone codes */
   React.useEffect(() => {
@@ -343,6 +352,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
   /* Phone handlers */
   const handleWaChange = (e) => {
     const val = e.target.value;
+    if (form.useSameAsContact) return; // Locked
     if (/^(?:\+|00)/.test(val)) {
       const det = detectCodeFromFreeText(val, phoneCodeOptions);
       if (det) {
@@ -355,6 +365,7 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
   };
 
   const handleWaPaste = (e) => {
+    if (form.useSameAsContact) return;
     const text = (e.clipboardData || window.clipboardData).getData("text");
     const det = detectCodeFromFreeText(text, phoneCodeOptions);
     if (det) {
@@ -438,269 +449,278 @@ export default function EditReceiverParty({ partyId, initialParty, onClose, onSu
     }
   };
 
-  // --- CHANGED: Added max-h and overflow-y-auto to form ---
   return (
-    <form 
-      onSubmit={handleSubmit} 
-      className="space-y-8 max-h-[85vh] overflow-y-auto px-1"
+    <form
+      onSubmit={handleSubmit}
+      className="flex h-full flex-col bg-slate-50"
     >
-      <Toaster position="top-right" />
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <Toaster position="top-right" />
 
-      {/* Branch (read-only) */}
-      <div className="bg-white">
-        <div>
-          <div>
-            <input
-              type="text"
-              className={[
-                fieldBase,
-                "bg-slate-100 text-black cursor-default",
-                "focus:ring-0 focus:border-slate-300",
-                "read-only:bg-slate-100 read-only:text-slate-700 read-only:cursor-default",
-                "text-[20px] font-semibold",
-              ].join(" ")}
-              value={branchName || (branchId ? `Branch #${branchId}` : "")}
-              readOnly
-              title="Auto-filled from your profile"
-            />
-            <input type="hidden" name="branch_id" value={branchId || ""} />
-          </div>
-        </div>
-      </div>
+        <div className="mx-auto max-w-4xl space-y-6">
 
-      {/* Address & Geo */}
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
-          <div className="grid h-7 w-7 place-items-center rounded-md bg-slate-900 text-[11px] font-semibold text-white">
-            1
-          </div>
-          <h3 className="text-sm font-semibold text-slate-900">Address</h3>
-        </header>
+          {/* SECTION 1: Personal Details */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 font-bold">1</div>
+              <h3 className="font-semibold text-slate-900">Personal Details</h3>
+            </header>
+            <div className="p-5">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                {/* Name */}
+                <div className="md:col-span-2">
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    name="name"
+                    value={form.name}
+                    onChange={onChange}
+                    className={fieldBase}
+                    placeholder="Enter full name as per ID"
+                  />
+                </div>
 
-        {/* Country / State / District */}
-        <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
-          {/* Country */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Country</label>
-            {countryLoading ? (
-              <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
-            ) : (
-              <select
-                name="country"
-                value={String(form.country || "")}
-                onChange={(e) => {
-                  onChange(e);
-                  setForm((f) => ({ ...f, state: "", district: "" }));
-                }}
-                className={`${fieldBase} ${fieldDisabled}`}
-                disabled={countryLoading}
-              >
-                <option value="">{countryLoading ? "Loading..." : "Select Country"}</option>
-                {!countryLoading &&
-                  countries.map((c) => (
-                    <option key={getId(c)} value={getId(c)}>{labelOf(c)}</option>
-                  ))}
-              </select>
-            )}
-            {countryError && <p className="mt-1 text-sm text-rose-700">{countryError}</p>}
-          </div>
+                {/* Contact Number (First now) */}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Contact Number</label>
+                  <div className="grid grid-cols-[110px,1fr] gap-2">
+                    {phoneCodesLoading ? (
+                      <div className="h-10 animate-pulse rounded-lg bg-slate-200" />
+                    ) : (
+                      <select
+                        value={contactCode}
+                        onChange={(e) => setContactCode(e.target.value)}
+                        onKeyDown={contactTypeahead.onKeyDown}
+                        className={`${fieldBase} ${fieldDisabled}`}
+                        disabled={phoneCodesLoading}
+                      >
+                        {phoneCodeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    )}
+                    <input
+                      type="tel"
+                      name="contactNumber"
+                      value={form.contactNumber}
+                      onChange={handleContactChange}
+                      onPaste={handleContactPaste}
+                      className={fieldBase}
+                      inputMode="numeric"
+                      placeholder="e.g. 501234567"
+                    />
+                  </div>
+                </div>
 
-          {/* State */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">State</label>
-            {stateLoading ? (
-              <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
-            ) : (
-              <select
-                name="state"
-                value={String(form.state || "")}
-                onChange={(e) => {
-                  onChange(e);
-                  setForm((f) => ({ ...f, district: "" }));
-                }}
-                className={`${fieldBase} ${fieldDisabled}`}
-                disabled={!form.country || stateLoading}
-              >
-                <option value="">
-                  {!form.country ? "Select Country fi..." : stateLoading ? "Loading..." : "Select State"}
-                </option>
-                {!stateLoading && form.country &&
-                  states.map((s) => (
-                    <option key={getId(s)} value={getId(s)}>{labelOf(s)}</option>
-                  ))}
-              </select>
-            )}
-            {stateError && <p className="mt-1 text-sm text-rose-700">{stateError}</p>}
-          </div>
-
-          {/* District */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">District</label>
-            {districtLoading ? (
-              <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
-            ) : (
-              <select
-                name="district"
-                value={String(form.district || "")}
-                onChange={onChange}
-                className={`${fieldBase} ${fieldDisabled}`}
-                disabled={!form.state || districtLoading}
-              >
-                <option value="">
-                  {!form.state ? "Select State fi..." : districtLoading ? "Loading..." : "Select District"}
-                </option>
-                {!districtLoading && form.state &&
-                  districts.map((d) => (
-                    <option key={getId(d)} value={getId(d)}>{labelOf(d)}</option>
-                  ))}
-              </select>
-            )}
-            {districtError && <p className="mt-1 text-sm text-rose-700">{districtError}</p>}
-          </div>
-        </div>
-
-        {/* City / Post / Postal Code */}
-        <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">City</label>
-            <input name="city" value={form.city} onChange={onChange} className={fieldBase} placeholder="Enter city" />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Post</label>
-            <input name="post" value={form.post} onChange={onChange} className={fieldBase} placeholder="Post office / locality" />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Postal Code</label>
-            <input name="postal_code" value={form.postal_code} onChange={onChange} className={fieldBase} inputMode="numeric" placeholder="PIN / ZIP" />
-          </div>
-        </div>
-
-        {/* Address */}
-        <div className="grid grid-cols-1 gap-5 px-4 pb-5 md:grid-cols-3">
-          <div className="md:col-span-3">
-            <label className="mb-1 block text-sm font-medium text-slate-700">Address</label>
-            <textarea name="address" value={form.address} onChange={onChange} className={fieldBase} rows={3} placeholder="House / Building, Street" />
-          </div>
-        </div>
-      </div>
-
-      {/* Receiver identity */}
-      <div className="rounded-xl border border-slate-200 bg-white">
-        <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
-          <div className="grid h-7 w-7 place-items-center rounded-md bg-slate-900 text-[11px] font-semibold text-white">
-            2
-          </div>
-          <h3 className="text-sm font-semibold text-slate-900">Receiver Identity</h3>
-        </header>
-
-        <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
-          {/* Name */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Name <span className="text-rose-600">*</span>
-            </label>
-            <input name="name" value={form.name} onChange={onChange} className={fieldBase} placeholder="Full name" aria-describedby="name_help" />
-            <p id="name_help" className="mt-1 text-xs text-slate-500">As per ID / official records.</p>
-          </div>
-
-          {/* WhatsApp */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">WhatsApp Number</label>
-            <div className="grid grid-cols-[120px,1fr] gap-2">
-              {phoneCodesLoading ? (
-                <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
-              ) : (
-                <select
-                  value={whatsappCode}
-                  onChange={(e) => setWhatsappCode(e.target.value)}
-                  onKeyDown={waTypeahead.onKeyDown}
-                  className={`${fieldBase} ${fieldDisabled}`}
-                  disabled={phoneCodesLoading}
-                  title="Tip: focus here and type digits like 91 to jump to 91"
-                >
-                  {phoneCodeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              )}
-              <input type="tel" name="whatsappNumber" value={form.whatsappNumber} onChange={handleWaChange} onPaste={handleWaPaste} className={fieldBase} inputMode="numeric" placeholder="501234567" autoComplete="tel" />
-            </div>
-            {phoneCodesError && <p className="mt-1 text-xs text-rose-700">{phoneCodesError}</p>}
-            <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" name="useSameForContact" checked={form.useSameForContact} onChange={onChange} />
-              Use same for Contact Number
-            </label>
-          </div>
-
-          {/* Contact */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Contact Number</label>
-            <div className="grid grid-cols-[120px,1fr] gap-2">
-              {phoneCodesLoading ? (
-                <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
-              ) : (
-                <select
-                  value={contactCode}
-                  onChange={(e) => setContactCode(e.target.value)}
-                  onKeyDown={contactTypeahead.onKeyDown}
-                  className={`${fieldBase} ${fieldDisabled}`}
-                  disabled={phoneCodesLoading || form.useSameForContact}
-                  title="Tip: focus here and type digits like 91 to jump to 91"
-                >
-                  {phoneCodeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              )}
-              <input type="tel" name="contactNumber" value={form.contactNumber} onChange={handleContactChange} onPaste={handleContactPaste} className={fieldBase} inputMode="numeric" placeholder="501234567" readOnly={form.useSameForContact} autoComplete="tel" />
+                {/* WhatsApp Number (Second now) */}
+                <div>
+                  <label className="mb-1.5 flex items-center justify-between text-sm font-medium text-slate-700">
+                    <span>WhatsApp Number</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="wa_same"
+                        name="useSameAsContact"
+                        checked={form.useSameAsContact}
+                        onChange={onChange}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <label htmlFor="wa_same" className="cursor-pointer text-xs font-normal text-slate-500">
+                        Same as Contact
+                      </label>
+                    </div>
+                  </label>
+                  <div className="grid grid-cols-[110px,1fr] gap-2">
+                    {phoneCodesLoading ? (
+                      <div className="h-10 animate-pulse rounded-lg bg-slate-200" />
+                    ) : (
+                      <select
+                        value={whatsappCode}
+                        onChange={(e) => setWhatsappCode(e.target.value)}
+                        onKeyDown={waTypeahead.onKeyDown}
+                        className={`${fieldBase} ${fieldDisabled}`}
+                        disabled={phoneCodesLoading || form.useSameAsContact}
+                      >
+                        {phoneCodeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    )}
+                    <input
+                      type="tel"
+                      name="whatsappNumber"
+                      value={form.whatsappNumber}
+                      onChange={handleWaChange}
+                      onPaste={handleWaPaste}
+                      className={fieldBase}
+                      inputMode="numeric"
+                      placeholder="e.g. 501234567"
+                      readOnly={form.useSameAsContact}
+                      disabled={form.useSameAsContact}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 gap-5 px-4 py-4 md:grid-cols-3">
-          {/* ID Type */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">ID Type</label>
-            {docsLoading ? (
-              <div className="h-[40px] animate-pulse rounded-lg bg-slate-200/80" />
-            ) : (
-              <select name="receiverIdType" value={String(form.receiverIdType || "")} onChange={onChange} className={`${fieldBase} ${fieldDisabled}`} disabled={docsLoading}>
-                <option value="">{docsLoading ? "Loading..." : "Select ID Type"}</option>
-                {docTypes.map((d) => <option key={getDocId(d)} value={getDocId(d)}>{getDocLabel(d)}</option>)}
-              </select>
-            )}
-            {docsError && <p className="mt-1 text-sm text-rose-700">{docsError}</p>}
+          {/* SECTION 2: Address */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 font-bold">2</div>
+              <h3 className="font-semibold text-slate-900">Address Details</h3>
+            </header>
+            <div className="p-5 space-y-5">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Country</label>
+                  {countryLoading ? (
+                    <div className="h-10 animate-pulse rounded-lg bg-slate-200" />
+                  ) : (
+                    <select
+                      name="country"
+                      value={String(form.country || "")}
+                      onChange={(e) => {
+                        onChange(e);
+                        setForm((f) => ({ ...f, state: "", district: "" }));
+                      }}
+                      className={fieldBase}
+                    >
+                      <option value="">Select Country</option>
+                      {countries.map((c) => (
+                        <option key={getId(c)} value={getId(c)}>{labelOf(c)}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">State</label>
+                  <select
+                    name="state"
+                    value={String(form.state || "")}
+                    onChange={(e) => {
+                      onChange(e);
+                      setForm((f) => ({ ...f, district: "" }));
+                    }}
+                    className={`${fieldBase} ${fieldDisabled}`}
+                    disabled={!form.country || stateLoading}
+                  >
+                    <option value="">Select State</option>
+                    {states.map((s) => (
+                      <option key={getId(s)} value={getId(s)}>{labelOf(s)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">District</label>
+                  <select
+                    name="district"
+                    value={String(form.district || "")}
+                    onChange={onChange}
+                    className={`${fieldBase} ${fieldDisabled}`}
+                    disabled={!form.state || districtLoading}
+                  >
+                    <option value="">Select District</option>
+                    {districts.map((d) => (
+                      <option key={getId(d)} value={getId(d)}>{labelOf(d)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">City</label>
+                  <input name="city" value={form.city} onChange={onChange} className={fieldBase} placeholder="City name" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Post Office</label>
+                  <input name="post" value={form.post} onChange={onChange} className={fieldBase} placeholder="PO name" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Postal Code</label>
+                  <input name="postal_code" value={form.postal_code} onChange={onChange} className={fieldBase} placeholder="ZIP/PIN" />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">Full Address</label>
+                <textarea
+                  name="address"
+                  value={form.address}
+                  onChange={onChange}
+                  className={fieldBase}
+                  rows={2}
+                  placeholder="House number, street name, etc."
+                />
+              </div>
+            </div>
           </div>
 
-          {/* ID Number */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Document ID</label>
-            <input name="receiverId" value={form.receiverId} onChange={onChange} className={fieldBase} placeholder="Document number" />
+          {/* SECTION 3: Documents */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 font-bold">3</div>
+              <h3 className="font-semibold text-slate-900">Documents</h3>
+            </header>
+            <div className="p-5">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">ID Type</label>
+                  <select name="receiverIdType" value={String(form.receiverIdType || "")} onChange={onChange} className={fieldBase}>
+                    <option value="">Select ID Type</option>
+                    {docTypes.map((d) => <option key={getDocId(d)} value={getDocId(d)}>{getDocLabel(d)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">ID Number</label>
+                  <input name="receiverId" value={form.receiverId} onChange={onChange} className={fieldBase} placeholder="ID Number" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Upload File</label>
+                  <input
+                    key={fileKey}
+                    type="file"
+                    name="documents"
+                    accept="image/*,.pdf"
+                    multiple
+                    onChange={onChange}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Uploads */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Upload Documents</label>
-            <input key={fileKey} type="file" name="documents" accept="image/*,.pdf" multiple onChange={onChange} className={fieldBase} />
+          {/* Branch Info (Hidden/Visual only) */}
+          <div className="flex items-center justify-between rounded-lg bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+            <span>Branch: <span className="font-semibold">{branchName || `ID: ${branchId}`}</span></span>
           </div>
+
         </div>
       </div>
 
-      {/* --- CHANGED: Actions are now Sticky at the Bottom --- */}
-      <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-slate-200 bg-white py-4 pr-1">
-        {submitError && <p className="mr-auto text-sm text-rose-700">{submitError}</p>}
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg border border-slate-300 bg-white px-5 py-2 text-slate-700 hover:bg-slate-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={submitLoading}
-          className={`rounded-lg px-5 py-2 text-white transition ${
-            submitLoading ? "cursor-not-allowed bg-rose-400" : "bg-rose-600 hover:bg-rose-700"
-          }`}
-        >
-          {submitLoading ? "Updating…" : "Update"}
-        </button>
+      {/* STICKY FOOTER - Always Visible */}
+      <div className="shrink-0 border-t border-slate-200 bg-white p-4">
+        <div className="mx-auto flex max-w-4xl items-center justify-end gap-3">
+          {submitError && <span className="mr-auto text-sm text-rose-600 font-medium">{submitError}</span>}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={submitLoading}
+            className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all
+              ${submitLoading
+                ? "cursor-not-allowed bg-indigo-400"
+                : "bg-indigo-600 hover:bg-indigo-700 hover:shadow-md focus:ring-4 focus:ring-indigo-100"
+              }`}
+          >
+            {submitLoading ? "Saving..." : "Update Party"}
+          </button>
+        </div>
       </div>
     </form>
   );

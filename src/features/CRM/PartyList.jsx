@@ -9,11 +9,8 @@ import {
   FiFilter,
   FiTrash,
   FiPhone,
-  FiFileText,
-  FiDownload,
   FiUser,
   FiMapPin,
-  FiMoreHorizontal, // New icon for actions if needed
 } from "react-icons/fi";
 import { Toaster, toast } from "react-hot-toast";
 import ViewParty from "./ViewParty";
@@ -57,7 +54,6 @@ const TableAvatar = ({ name }) => {
     .join("")
     .toUpperCase();
 
-  // Generate a consistent color based on the name length
   const colors = [
     "bg-blue-100 text-blue-700",
     "bg-emerald-100 text-emerald-700",
@@ -120,7 +116,7 @@ export default function PartyList() {
   // Filters & Pagination State
   const [selectedType, setSelectedType] = useState("");
   const [search, setSearch] = useState("");
-  const [phoneFilter, setPhoneFilter] = useState(""); // Phone Filter State
+  const [phoneFilter, setPhoneFilter] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [meta, setMeta] = useState({ last_page: 1, total: 0, from: 0, to: 0 });
@@ -156,7 +152,7 @@ export default function PartyList() {
         page,
         per_page: perPage,
         search: trimmedSearch || undefined,
-        phone: trimmedPhone || undefined, // Send phone param to API
+        phone: trimmedPhone || undefined,
         contact_number: trimmedPhone || undefined,
       };
 
@@ -184,7 +180,6 @@ export default function PartyList() {
         // --- Client Side Filtering Fallback ---
         let filteredList = list;
 
-        // Name/City Search
         if (trimmedSearch) {
           const lowerSearch = trimmedSearch.toLowerCase();
           filteredList = filteredList.filter(
@@ -195,7 +190,6 @@ export default function PartyList() {
           );
         }
 
-        // Phone Search (Client Side)
         if (trimmedPhone) {
           filteredList = filteredList.filter((p) => {
             const num = p.phone || p.contact_number || "";
@@ -222,21 +216,19 @@ export default function PartyList() {
     }
   };
 
-  // Re-fetch when page/type/perPage changes
   useEffect(() => {
     loadParties();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, selectedType, perPage]);
 
-  // Debounce Search & Phone Filter
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1);
       loadParties();
-    }, 500); // 500ms delay
+    }, 500);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, phoneFilter]); // Added phoneFilter to dependency array
+  }, [search, phoneFilter]);
 
   // --- Handlers ---
   const handleView = (id) => {
@@ -258,8 +250,8 @@ export default function PartyList() {
     setShowEditModal(false);
     setEditingPartyId(null);
     if (showViewModal) {
-        setShowViewModal(false);
-        setViewingParty(null);
+      setShowViewModal(false);
+      setViewingParty(null);
     }
   };
 
@@ -292,7 +284,7 @@ export default function PartyList() {
   };
 
   return (
-    <div className="min-h-screen  pb-20 font-sans text-slate-800">
+    <div className="min-h-screen pb-20 font-sans text-slate-800">
       <Toaster position="top-right" />
 
       <div className="mx-auto w-full">
@@ -339,7 +331,7 @@ export default function PartyList() {
             />
           </div>
 
-          {/* Phone Filter (Requested) */}
+          {/* Phone Filter */}
           <div className="relative md:col-span-4">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
               <FiPhone className="h-4 w-4 text-slate-400" />
@@ -448,11 +440,11 @@ export default function PartyList() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           <span className="flex items-center gap-2 font-medium text-slate-700">
-                             {party.phone || party.contact_number || "—"}
+                            {party.phone || party.contact_number || "—"}
                           </span>
                           {party.whatsapp_number && (
                             <span className="text-xs text-green-600 flex items-center gap-1">
-                               WA: {party.whatsapp_number}
+                              WA: {party.whatsapp_number}
                             </span>
                           )}
                         </div>
@@ -461,27 +453,26 @@ export default function PartyList() {
                       {/* Address */}
                       <td className="px-6 py-4">
                         <div className="max-w-[200px]">
-                           <div className="flex items-start gap-1.5 text-slate-600">
-                               <FiMapPin className="mt-0.5 shrink-0 text-slate-400" size={14}/>
-                               <span className="truncate" title={party.address}>
-                                   {party.city ? `${party.city}, ` : ''}{party.country?.name || party.country || "—"}
-                               </span>
-                           </div>
-                           <div className="pl-5 text-xs text-slate-400 truncate mt-0.5" title={party.address}>
-                                {party.address}
-                           </div>
+                          <div className="flex items-start gap-1.5 text-slate-600">
+                            <FiMapPin className="mt-0.5 shrink-0 text-slate-400" size={14} />
+                            <span className="truncate" title={party.address}>
+                              {party.city ? `${party.city}, ` : ''}{party.country?.name || party.country || "—"}
+                            </span>
+                          </div>
+                          <div className="pl-5 text-xs text-slate-400 truncate mt-0.5" title={party.address}>
+                            {party.address}
+                          </div>
                         </div>
                       </td>
 
                       {/* Type Badge */}
                       <td className="px-6 py-4">
                         <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
-                            String(party.customer_type_id) === "1" ||
-                            party.customer_type?.name === "Sender"
+                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${String(party.customer_type_id) === "1" ||
+                              party.customer_type?.name === "Sender"
                               ? "bg-blue-50 text-blue-700 ring-blue-600/20"
                               : "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
-                          }`}
+                            }`}
                         >
                           {party.customer_type?.name ||
                             (String(party.customer_type_id) === "1"
@@ -568,11 +559,12 @@ export default function PartyList() {
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit Modal - FIXED LAYOUT */}
       {showEditModal && editingPartyId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
+          {/* Changed container to flex flex-col and removed internal scroll logic here so child can handle it */}
+          <div className="relative w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4 shrink-0">
               <h3 className="text-lg font-semibold text-slate-900">
                 Edit Party
               </h3>
@@ -583,7 +575,8 @@ export default function PartyList() {
                 ✕
               </button>
             </div>
-            <div className="h-full overflow-y-auto p-6 pb-20">
+            {/* Content area that fills available space but doesn't force scroll unless child needs it */}
+            <div className="flex-1 overflow-hidden relative bg-white">
               <EditParty
                 partyId={editingPartyId}
                 onClose={handleCloseEditModal}
@@ -604,8 +597,8 @@ export default function PartyList() {
               </h3>
               <button
                 onClick={() => {
-                   setShowViewModal(false);
-                   setViewingParty(null);
+                  setShowViewModal(false);
+                  setViewingParty(null);
                 }}
                 className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
               >
@@ -613,7 +606,7 @@ export default function PartyList() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto">
-               <ViewParty id={getRowId(viewingParty)} isModalView={true} />
+              <ViewParty id={getRowId(viewingParty)} isModalView={true} />
             </div>
           </div>
         </div>
