@@ -12,7 +12,8 @@ import {
   PiPlusBold,
   PiTrash,
   PiFileXls,
-  PiFloppyDiskBack
+  PiFloppyDiskBack,
+  PiWarningCircleBold
 } from "react-icons/pi";
 
 import {
@@ -128,6 +129,48 @@ function RightToast({ open, variant = "success", children, onClose }) {
         >
           <PiXBold />
         </button>
+      </div>
+    </div>
+  );
+}
+
+// --- NEW: Manual Close Error Modal for detailed validation lists ---
+function ManualErrorModal({ open, title, lines, onClose }) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh] border border-gray-100">
+        
+        {/* Header */}
+        <div className="p-5 border-b border-rose-100 bg-rose-50/50 flex items-center gap-3">
+           <div className="bg-rose-100 p-2 rounded-full text-rose-600">
+             <PiWarningCircleBold className="text-xl" />
+           </div>
+           <h3 className="text-lg font-bold text-gray-800">{title || "Validation Error"}</h3>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto custom-scrollbar">
+           {lines.map((line, i) => (
+             <div 
+                key={i} 
+                className={`text-sm mb-1.5 ${i === 0 ? 'font-medium text-gray-800 mb-3' : 'text-rose-600 font-mono bg-rose-50/50 px-2 py-1 rounded border border-rose-100'}`}
+             >
+               {line}
+             </div>
+           ))}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 flex justify-end">
+          <button 
+            onClick={onClose} 
+            className="px-6 py-2.5 bg-gray-800 text-white font-medium rounded-lg hover:bg-gray-900 transition-colors shadow-lg shadow-gray-200"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -249,6 +292,9 @@ export default function CreateShipmentBill() {
   // toast + server errors
   const [toast, setToast] = useState({ open: false, variant: "success", text: "" });
   const [fieldErrors, setFieldErrors] = useState({});
+  
+  // New State for Manual Error Modal (Import validation)
+  const [importAlert, setImportAlert] = useState({ open: false, title: "", lines: [] });
 
   // Saved cargos list
   const [addedRows, setAddedRows] = useState([]);
@@ -729,6 +775,7 @@ export default function CreateShipmentBill() {
 
     setImporting(true);
     setToast({ open: true, variant: "success", text: "Uploading… reading file…" });
+    setImportAlert({ open: false, title: "", lines: [] }); // Reset any previous alerts
 
     try {
       const resp = await importCustomShipments(file, {
@@ -807,8 +854,30 @@ export default function CreateShipmentBill() {
         });
       }
     } catch (err) {
-       // ... existing error handling ...
-      setToast({ open: true, variant: "error", text: "Import failed. Please check your file." });
+      console.error("Import Validation Error:", err);
+      const resData = err.response?.data;
+      
+      // Extract invoice numbers if available in details
+      const existingInvoices = resData?.details?.existing_invoices || resData?.existing_invoices;
+      
+      if (Array.isArray(existingInvoices) && existingInvoices.length > 0) {
+         // Show manual close modal for detailed invoice list
+         setImportAlert({
+            open: true,
+            title: "Import Failed: Duplicate Invoices",
+            lines: [
+               "The following invoice numbers already exist in the system and cannot be re-imported:",
+               ...existingInvoices
+            ]
+         });
+      } else {
+         // Generic toast for other errors
+         setToast({ 
+            open: true, 
+            variant: "error", 
+            text: resData?.message || "Import failed. Please check your file." 
+         });
+      }
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -823,6 +892,8 @@ export default function CreateShipmentBill() {
 
   return (
     <div className="w-full mx-auto animate-fade-in-up pb-10">
+      
+      {/* Toast Notification */}
       <RightToast
         open={toast.open}
         variant={toast.variant}
@@ -830,6 +901,14 @@ export default function CreateShipmentBill() {
       >
         {toast.text}
       </RightToast>
+
+      {/* Manual Close Alert for Import Errors */}
+      <ManualErrorModal 
+        open={importAlert.open}
+        title={importAlert.title}
+        lines={importAlert.lines}
+        onClose={() => setImportAlert({ open: false, title: "", lines: [] })}
+      />
 
       <div className="flex items-center justify-between mb-8">
         <div>
