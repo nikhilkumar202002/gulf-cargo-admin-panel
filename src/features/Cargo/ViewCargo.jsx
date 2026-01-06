@@ -1,28 +1,38 @@
 // src/pages/ViewCargo.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BsFillBoxSeamFill } from "react-icons/bs";
-import { IoLocationSharp } from "react-icons/io5";
-import { MdAddIcCall } from "react-icons/md";
+
+/* Icons */
+import { 
+  FiArrowLeft, FiBox, FiCalendar, FiMapPin, FiTruck, 
+  FiUser, FiPhone, FiCreditCard, FiFileText, FiActivity
+} from "react-icons/fi";
+import { TbWeight } from "react-icons/tb";
+import { HiOutlineCurrencyDollar } from "react-icons/hi";
+import { BsWhatsapp } from "react-icons/bs"; // Corrected Import
+
+/* Services */
 import { getCargoById } from "../../services/cargoService";
 import { getPartyByIdFlexible } from "../../services/partyService";
+
+/* Styles */
 import "./ShipmentStyles.css";
 
-/* ---------------- formatting helpers ---------------- */
+/* ---------------- 1. HELPERS ---------------- */
 
-// unwrap parties that might come back as { data: {...} } or { party: {...} }
 const unwrapParty = (p) =>
   (p && typeof p === "object" && (p.data?.party || p.data || p.party || p.result || p)) || null;
-
 
 const money = (v) => {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n.toFixed(2) : "0.00";
 };
+
 const weight3 = (v) => {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n.toFixed(3) : "0.000";
 };
+
 const timeHHMM = (t) => {
   if (!t) return "—";
   const m = String(t).match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/);
@@ -31,16 +41,16 @@ const timeHHMM = (t) => {
   const mm = String(Math.min(59, Number(m[2]))).padStart(2, "0");
   return `${hh}:${mm}`;
 };
-const statusClass = (s) => {
+
+const getStatusColor = (s) => {
   const v = String(s || "").toLowerCase();
-  if (!v || v === "pending") return "bg-amber-100 text-amber-800";
-  if (v.includes("enquiry")) return "bg-sky-100 text-sky-800";
-  if (v.includes("received") || v.includes("deliver")) return "bg-emerald-100 text-emerald-800";
-  if (v.includes("cancel")) return "bg-rose-100 text-rose-800";
-  return "bg-slate-100 text-slate-800";
+  if (!v || v === "pending") return "bg-amber-100 text-amber-700 border-amber-200";
+  if (v.includes("enquiry")) return "bg-sky-100 text-sky-700 border-sky-200";
+  if (v.includes("received") || v.includes("deliver")) return "bg-emerald-100 text-emerald-700 border-emerald-200";
+  if (v.includes("cancel")) return "bg-rose-100 text-rose-700 border-rose-200";
+  return "bg-slate-100 text-slate-700 border-slate-200";
 };
 
-/* ---------------- value pickers ---------------- */
 const pickOne = (obj, keys, d = undefined) => {
   if (!obj || typeof obj !== "object") return d;
   for (const k of keys) {
@@ -50,49 +60,7 @@ const pickOne = (obj, keys, d = undefined) => {
   return d;
 };
 
-const formatPhones = (party = {}, cargo = {}, role = "") => {
-  if (!party || typeof party !== "object") return "—";
-  const norm = (v) => (v === undefined || v === null ? "" : String(v).trim());
-  const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
-
-  // party-level candidates
-  const callCandidates = [
-    party.contact_number,
-    party.contact_no,
-    party.phone_number,
-    party.phone_no,
-    party.phone,
-    party.mobile_number,
-    party.mobile_no,
-    party.mobile,
-    party.telephone,
-    party.tel,
-    party.contact,
-  ].map(norm);
-
-  const waCandidates = [
-    party.whatsapp_number,
-    party.whats_app,
-    party.whatsapp,
-    party.wa_number,
-  ].map(norm);
-
-  // cargo-level fallbacks (e.g., sender_phone, receiver_whatsapp)
-  const r = (k) => norm(cargo?.[k]);
-  if (role) {
-    callCandidates.push(r(`${role}_phone`), r(`${role}_mobile`), r(`${role}_contact_number`));
-    waCandidates.push(r(`${role}_whatsapp`), r(`${role}_whatsapp_number`));
-  }
-
-  const phones = uniq(callCandidates);
-  const whats = uniq(waCandidates);
-
-  const chunks = [];
-  if (phones.length) chunks.push(`Call: ${phones.join(" / ")}`);
-  if (whats.length) chunks.push(`WhatsApp: ${whats.join(" / ")}`);
-  return chunks.join("  •  ") || "—";
-};
-
+/* Address & Phone Formatters */
 const joinAddress = (p = {}) => {
   if (!p || typeof p !== "object") return "—";
   const parts = [
@@ -103,67 +71,98 @@ const joinAddress = (p = {}) => {
   return parts.join(", ") || "—";
 };
 
-/* ---------------- clipboard button ---------------- */
-const CopyBtn = ({ text }) => {
-  const [ok, setOk] = useState(false);
+/* ---------------- 2. COMPONENTS ---------------- */
+
+const Avatar = ({ name, type = "sender" }) => {
+  const initial = name ? name.charAt(0).toUpperCase() : "?";
+  const colorClass = type === "sender" 
+    ? "bg-indigo-100 text-indigo-600" 
+    : "bg-emerald-100 text-emerald-600";
+    
   return (
-    <button
-      type="button"
-      className="ml-2 text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text || "");
-          setOk(true);
-          setTimeout(() => setOk(false), 900);
-        } catch { }
-      }}
+    <div className={`h-12 w-12 shrink-0 rounded-full flex items-center justify-center text-lg font-bold shadow-sm ${colorClass}`}>
+      {initial}
+    </div>
+  );
+};
+
+const CopyBadge = ({ text, label }) => {
+  const [copied, setCopied] = useState(false);
+  if(!text) return null;
+  
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  return (
+    <button 
+      onClick={handleCopy}
+      className="group flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-white border border-slate-200 hover:border-indigo-300 rounded-lg transition-all text-xs text-slate-600 cursor-pointer"
     >
-      {ok ? "Copied" : "Copy"}
+      <span className="font-semibold text-slate-700">{label}:</span>
+      <span className="font-mono">{text}</span>
+      <span className="text-[10px] uppercase font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
+        {copied ? "Copied!" : "Copy"}
+      </span>
     </button>
   );
 };
 
-/* ---------------- normalize helpers for boxes ---------------- */
+const InfoRow = ({ icon: Icon, label, value, subValue }) => (
+  <div className="flex items-start gap-3 py-2">
+    <div className="mt-0.5 text-slate-400">
+      <Icon className="h-4 w-4" />
+    </div>
+    <div>
+      <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</div>
+      <div className="text-sm font-semibold text-slate-800 mt-0.5">{value || "—"}</div>
+      {subValue && <div className="text-xs text-slate-500">{subValue}</div>}
+    </div>
+  </div>
+);
+
+const StatCard = ({ label, value, icon: Icon, colorClass }) => (
+  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+    <div className={`p-3 rounded-lg ${colorClass}`}>
+      <Icon className="h-6 w-6" />
+    </div>
+    <div>
+      <p className="text-xs font-medium text-slate-500 uppercase">{label}</p>
+      <p className="text-xl font-bold text-slate-800">{value}</p>
+    </div>
+  </div>
+);
+
+/* ---------------- 3. LOGIC HELPERS ---------------- */
+
 function normalizeBoxes(cargo) {
   const raw = cargo?.boxes;
-
-  // Object-shaped: { "1": { items: [...] }, "": { items: [...] } }
   if (raw && !Array.isArray(raw) && typeof raw === "object") {
     const out = [];
     for (const [k, v] of Object.entries(raw)) {
       const items = Array.isArray(v?.items) ? v.items : [];
       const pieces = items.reduce((sum, it) => sum + Number(it?.piece_no ?? it?.pieces ?? 0), 0);
-      const weight =
-        Number(v?.box_weight ?? v?.weight ?? 0) ||
-        items.reduce((s, it) => s + Number(it?.weight ?? 0), 0);
+      const weight = Number(v?.box_weight ?? v?.weight ?? 0) || items.reduce((s, it) => s + Number(it?.weight ?? 0), 0);
       const bn = k && String(k).trim() !== "" ? k : 1;
-      const patched = items.map((it) => ({
-        ...it,
-        box_number: it?.box_number ?? bn,
-      }));
+      const patched = items.map((it) => ({ ...it, box_number: it?.box_number ?? bn }));
       out.push({ box_number: bn, weight, pieces, items: patched });
     }
     return out;
   }
-
-  // Array-shaped: [{ box_number, items: [...] }, ...]
   if (Array.isArray(raw)) {
     return raw.map((b, i) => {
       const box_number = b?.box_number ?? b?.boxNo ?? b?.box ?? (i + 1);
       const items = Array.isArray(b?.items) ? b.items : [];
       const pieces = items.reduce((sum, it) => sum + Number(it?.piece_no ?? it?.pieces ?? 0), 0);
-      const weight =
-        Number(b?.box_weight ?? b?.weight ?? 0) ||
-        items.reduce((s, it) => s + Number(it?.weight ?? 0), 0);
-      const patched = items.map((it) => ({
-        ...it,
-        box_number: it?.box_number ?? box_number,
-      }));
+      const weight = Number(b?.box_weight ?? b?.weight ?? 0) || items.reduce((s, it) => s + Number(it?.weight ?? 0), 0);
+      const patched = items.map((it) => ({ ...it, box_number: it?.box_number ?? box_number }));
       return { box_number, weight, pieces, items: patched };
     });
   }
-
-  // Fallback: flat items on cargo
   const flat = Array.isArray(cargo?.items) ? cargo.items : [];
   if (flat.length) {
     const byBox = new Map();
@@ -177,25 +176,11 @@ function normalizeBoxes(cargo) {
       return { box_number, weight: 0, pieces, items };
     });
   }
-
   return [];
 }
 
-function flattenItemsFromBoxes(boxes) {
-  const arr = [];
-  boxes.forEach((b) => {
-    (b.items || []).forEach((it, i) =>
-      arr.push({
-        ...it,
-        box_number: b.box_number,
-        slno: it?.slno ?? i + 1,
-      })
-    );
-  });
-  return arr;
-}
+/* ---------------- 4. MAIN PAGE ---------------- */
 
-/* ---------------- main ---------------- */
 export default function ViewCargo() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -203,14 +188,13 @@ export default function ViewCargo() {
   const [cargo, setCargo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-
   const [senderParty, setSenderParty] = useState(null);
   const [receiverParty, setReceiverParty] = useState(null);
 
+  // --- Fetch Cargo ---
   useEffect(() => {
     (async () => {
-      setLoading(true);
-      setErr("");
+      setLoading(true); setErr("");
       try {
         const res = await getCargoById(id);
         const c = res?.cargo ?? res?.data?.cargo ?? (res?.success && res?.cargo ? res.cargo : res);
@@ -223,7 +207,7 @@ export default function ViewCargo() {
     })();
   }, [id]);
 
-  // fetch parties by id for full details (phones/address)
+  // --- Fetch Parties ---
   useEffect(() => {
     if (!cargo) return;
     const sId = cargo?.sender_id ?? cargo?.senderId;
@@ -238,46 +222,24 @@ export default function ViewCargo() {
           const r = await getPartyByIdFlexible(rId);
           if (r) setReceiverParty(unwrapParty(r));
         }
-      } catch {
-        // swallow; UI still shows names from cargo
-      }
+      } catch {}
     })();
   }, [cargo]);
 
-  /* ---------- derive fields ---------- */
+  // --- Derived Data ---
   const senderP   = unwrapParty(senderParty)   ?? cargo?.sender ?? null;
-const receiverP = unwrapParty(receiverParty) ?? cargo?.receiver ?? null;
+  const receiverP = unwrapParty(receiverParty) ?? cargo?.receiver ?? null;
+  
+  const senderName = pickOne(senderP, ["name"]) ?? pickOne(cargo, ["sender_name", "sender.name"], "—");
+  const receiverName = pickOne(receiverP, ["name"]) ?? pickOne(cargo, ["receiver_name", "consignee_name"], "—");
+  
+  const sender = senderP ?? { name: senderName };
+  const receiver = receiverP ?? { name: receiverName };
 
-const senderName =
-  pickOne(senderP, ["name"]) ??
-  pickOne(cargo, ["sender_name", "sender.name"], "—");
-
-const receiverName =
-  pickOne(receiverP, ["name"]) ??
-  pickOne(cargo, ["receiver_name", "consignee_name", "receiver.name"], "—");
-
- // These are what address/phone helpers will use
-const sender   = senderP   ?? { name: senderName };
-const receiver = receiverP ?? { name: receiverName };
-
-// In your sample these are plain strings; keep .name fallback for other shapes
-const shippingText = pickOne(cargo, ["shipping_method.name", "shipping_method"], "—");
-const paymentText  = pickOne(cargo, ["payment_method.name", "payment_method"], "—");
-const deliveryText = pickOne(cargo, ["delivery_type.name", "delivery_type"], "—");
-const statusText   = pickOne(cargo, ["status.name", "status"], "—");
-
-  /* ---------- boxes & items ---------- */
   const boxList = useMemo(() => normalizeBoxes(cargo), [cargo]);
-  const flatItems = useMemo(() => {
-    if (Array.isArray(cargo?.items) && cargo.items.length) return cargo.items;
-    return flattenItemsFromBoxes(boxList);
-  }, [cargo, boxList]);
-
+  
   const totals = useMemo(() => {
-    const totalWeight =
-      Number(pickOne(cargo, ["total_weight"])) ||
-      boxList.reduce((s, b) => s + Number(b.weight || 0), 0);
-
+    const totalWeight = Number(pickOne(cargo, ["total_weight"])) || boxList.reduce((s, b) => s + Number(b.weight || 0), 0);
     return {
       total_cost: money(cargo?.total_cost),
       bill_charges: money(cargo?.bill_charges),
@@ -288,285 +250,244 @@ const statusText   = pickOne(cargo, ["status.name", "status"], "—");
     };
   }, [cargo, boxList]);
 
-  const Stat = ({ label, value, after }) => (
-    <div>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="font-medium break-words">
-        {value ?? "—"} {after}
-      </div>
-    </div>
-  );
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Loading details...</div>;
+  if (err) return <div className="min-h-screen flex items-center justify-center text-rose-600">{err}</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto w-full max-w-6xl">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold text-indigo-600 flex items-center gap-2">
-            <BsFillBoxSeamFill className="text-2xl" />
-            Cargo Details
-          </h1>
-
-          <div className="flex gap-2">
+    <div className="min-h-screen">
       
-            <button
-              onClick={() => navigate(-1)}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-            >
-              Back
-            </button>
+      {/* --- Top Bar --- */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+               <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
+                 <FiArrowLeft className="h-5 w-5" />
+               </button>
+               <div>
+                 <div className="flex items-center gap-3">
+                   <h1 className="text-xl font-bold text-slate-900 font-mono tracking-tight">{cargo?.booking_no}</h1>
+                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border uppercase tracking-wide ${getStatusColor(cargo?.status?.name || cargo?.status)}`}>
+                      {cargo?.status?.name || cargo?.status || "Unknown"}
+                   </span>
+                 </div>
+                 <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                    Created on <span className="font-medium text-slate-700">{cargo?.date || "—"}</span> 
+                    at <span className="font-medium text-slate-700">{timeHHMM(cargo?.time)}</span>
+                 </p>
+               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+               {/* Actions could go here */}
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Error/Loading */}
-        {err && (
-          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-            {err}
-          </div>
-        )}
-        {loading && (
-          <div className="rounded-xl border bg-white p-6 animate-pulse text-gray-400">
-            Loading cargo…
-          </div>
-        )}
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        {/* --- Key Metrics --- */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+           <StatCard label="Total Weight" value={`${totals.total_weight} kg`} icon={TbWeight} colorClass="bg-blue-50 text-blue-600" />
+           <StatCard label="Total Boxes" value={boxList.length} icon={FiBox} colorClass="bg-amber-50 text-amber-600" />
+           <StatCard label="Net Total" value={`${totals.net_total} SAR`} icon={HiOutlineCurrencyDollar} colorClass="bg-emerald-50 text-emerald-600" />
+           <StatCard label="Branch" value={cargo?.branch_name || "—"} icon={FiMapPin} colorClass="bg-purple-50 text-purple-600" />
+        </div>
 
-        {!loading && !err && (
-          <div className="space-y-6">
-            {/* Booking + Status */}
-            <div className="rounded-xl bg-white p-4 border">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-sm text-gray-500">Booking No.</div>
-                  <div className="text-lg font-semibold">
-                    {cargo?.booking_no || "—"}
-                  </div>
-                  {cargo?.booking_no && <CopyBtn text={cargo.booking_no} />}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className={`px-2 py-1 text-xs rounded-lg ${statusClass(statusText)}`}>
-                    {statusText}
-                  </span>
-                  {cargo?.branch_name && (
-                    <div className="text-sm text-gray-500">Branch: {cargo.branch_name}</div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Parties */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Sender */}
-              <div className="rounded-xl bg-white p-4 border">
-                <div className="text-base font-semibold mb-2">Sender</div>
-                <div className="text-sm">{senderName}</div>
-                <div className="mt-2 space-y-1 text-sm text-gray-700">
-                  {joinAddress(sender) !== "—" && (
-                    <p className="flex items-center gap-1">
-                      <IoLocationSharp className="text-red-500" />
-                      {joinAddress(sender)}
-                    </p>
-                  )}
-                  {formatPhones(sender, cargo, "sender") !== "—" && (
-                    <p className="flex items-center gap-1">
-                      <MdAddIcCall className="text-emerald-600" />
-                      {formatPhones(sender, cargo, "sender")}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Receiver */}
-              <div className="rounded-xl bg-white p-4 border">
-                <div className="text-base font-semibold mb-2">Receiver</div>
-                <div className="text-sm">{receiverName}</div>
-                <div className="mt-2 space-y-1 text-sm text-gray-700">
-                  {joinAddress(receiver) !== "—" && (
-                    <p className="flex items-center gap-1">
-                      <IoLocationSharp className="text-red-500" />
-                      {joinAddress(receiver)}
-                    </p>
-                  )}
-                  {formatPhones(receiver, cargo, "receiver") !== "—" && (
-                    <p className="flex items-center gap-1">
-                      <MdAddIcCall className="text-emerald-600" />
-                      {formatPhones(receiver, cargo, "receiver")}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Shipment + Financials */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="rounded-xl bg-white p-4 border">
-                <div className="text-base font-semibold mb-2">Shipment</div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-
-                  <Stat label="Date" value={cargo?.date || "—"} />
-                  <Stat label="Time" value={timeHHMM(cargo?.time)} />
-                  <Stat label="Shipping Method" value={shippingText} />
-                  <Stat label="Payment Method" value={paymentText} />
-                  <div className="col-span-2">
-                    <div className="flex items-center">
-                      <Stat label="LRL Tracking Code" value={cargo?.lrl_tracking_code || "—"} />
-                      {cargo?.lrl_tracking_code && <CopyBtn text={cargo.lrl_tracking_code} />}
-                    </div>
-                  </div>
-                  <Stat label="Collected By" value={cargo?.collected_by || "—"} />
-                  <Stat label="Delivery Type" value={deliveryText} />
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-white p-4 border">
-                <div className="text-base font-semibold mb-2">Financials</div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <Stat label="Total Cost" value={totals.total_cost} after=" SAR" />
-                  <Stat label="Bill Charges" value={totals.bill_charges} after=" SAR" />
-                  <Stat label="VAT %" value={totals.vat_percentage} />
-                  <Stat label="VAT Cost" value={totals.vat_cost} after=" SAR" />
-                  <Stat label="Net Total" value={totals.net_total} after=" SAR" />
-                  <Stat label="Total Weight" value={totals.total_weight} after=" kg" />
-                </div>
-              </div>
-            </div>
-
-            {/* Special Remarks */}
-            <div className="rounded-xl bg-white p-4 border">
-              <div className="text-base font-semibold mb-2">Special Remarks</div>
-              <div className="text-sm text-gray-700">
-                {cargo?.special_remarks || "—"}
-              </div>
-            </div>
-
-            {/* Boxes */}
-            <div className="rounded-xl border bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b bg-gray-50 font-semibold flex items-center justify-between">
-                <span>Boxes</span>
-                <span className="text-sm text-gray-500">Total Boxes: {boxList.length || 0}</span>
-              </div>
-
-              {boxList.length === 0 ? (
-                <div className="p-6 text-sm text-gray-500">No boxes found.</div>
-              ) : (
-                <div className="divide-y">
-                  {boxList
-                    .sort((a, b) => Number(a.box_number) - Number(b.box_number))
-                    .map((b, bi) => (
-                      <div key={`box-${bi}`}>
-                        <div className="px-4 py-3 bg-white flex flex-wrap items-center justify-between gap-3">
-                          <div className="text-base font-semibold">Box #{b.box_number}</div>
-                          <div className="flex items-center gap-4 text-sm text-gray-700">
-                            <span>Pieces: <b className="tabular-nums">{b.pieces || 0}</b></span>
-                            <span>Weight: <b className="tabular-nums">{weight3(b.weight)} kg</b></span>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* --- LEFT COLUMN (2/3) --- */}
+          <div className="lg:col-span-2 space-y-8">
+            
+            {/* Route Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+               <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                    <FiTruck className="text-indigo-500" /> Shipment Route
+                  </h3>
+               </div>
+               
+               <div className="p-6 relative">
+                 {/* Visual Connector Line */}
+                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 hidden md:block w-px h-24 bg-slate-200 rotate-90" />
+                 
+                 <div className="flex flex-col md:flex-row justify-between gap-8 md:gap-16">
+                    {/* Sender */}
+                    <div className="flex-1 flex gap-4">
+                       <Avatar name={senderName} type="sender" />
+                       <div>
+                          <p className="text-xs uppercase font-bold text-slate-400 tracking-wider mb-1">From (Sender)</p>
+                          <p className="text-lg font-bold text-slate-900">{senderName}</p>
+                          <p className="text-sm text-slate-600 mt-1 leading-relaxed">{joinAddress(sender)}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                             {sender.contact_number && (
+                               <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100 text-xs font-medium text-slate-600">
+                                 <FiPhone className="h-3 w-3" /> {sender.contact_number}
+                               </span>
+                             )}
                           </div>
-                        </div>
+                       </div>
+                    </div>
 
-                        <div className="overflow-x-auto">
-                          <table className="min-w-[700px] w-full text-sm">
-                            <thead className="bg-gray-100 border-y border-gray-200">
-                              <tr className="text-left text-gray-600">
-                                <th className="px-3 py-2 w-14 text-center">Slno</th>
-                                <th className="px-3 py-2">Item</th>
-                                <th className="px-3 py-2 w-28 text-right">Pieces</th>
-                                <th className="px-3 py-2 w-28 text-right">Unit Price</th>
-                                <th className="px-3 py-2 w-28 text-right">Total Price</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Array.isArray(b.items) && b.items.length ? (
-                                b.items.map((it, i) => (
-                                  <tr key={`${bi}-${i}`} className={i % 2 ? "bg-white" : "bg-gray-50"}>
-                                    <td className="px-3 py-2 text-center text-gray-500">
-                                      {it?.slno || i + 1}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      {it?.name || it?.item_name || "—"}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {Number(it?.piece_no ?? it?.pieces ?? 0)}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {money(it?.unit_price ?? it?.unitPrice)} SAR
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {money(
-                                        it?.total_price ??
-                                        (Number(it?.piece_no ?? it?.pieces ?? 0) * Number(it?.unit_price ?? 0))
-                                      )} SAR
-                                    </td>
+                    {/* Receiver */}
+                    <div className="flex-1 flex gap-4 text-left md:text-right flex-row md:flex-row-reverse">
+                       <Avatar name={receiverName} type="receiver" />
+                       <div>
+                          <p className="text-xs uppercase font-bold text-slate-400 tracking-wider mb-1">To (Receiver)</p>
+                          <p className="text-lg font-bold text-slate-900">{receiverName}</p>
+                          <p className="text-sm text-slate-600 mt-1 leading-relaxed">{joinAddress(receiver)}</p>
+                          <div className="mt-3 flex flex-wrap gap-2 md:justify-end">
+                             {receiver.contact_number && (
+                               <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100 text-xs font-medium text-slate-600">
+                                 <FiPhone className="h-3 w-3" /> {receiver.contact_number}
+                               </span>
+                             )}
+                             {receiver.whatsapp_number && (
+                               <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-50 text-xs font-medium text-emerald-700">
+                                 <BsWhatsapp className="h-3 w-3" /> {receiver.whatsapp_number}
+                               </span>
+                             )}
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+               </div>
+            </div>
+
+            {/* Boxes & Items */}
+            <div className="space-y-4">
+               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                 <FiBox className="text-amber-500" /> Boxes & Content
+               </h3>
+               
+               {boxList.length === 0 ? (
+                 <div className="p-8 bg-white rounded-xl border border-slate-200 text-center text-slate-500 italic">
+                   No boxes recorded for this shipment.
+                 </div>
+               ) : (
+                 <div className="grid grid-cols-1 gap-4">
+                    {boxList
+                      .sort((a, b) => Number(a.box_number) - Number(b.box_number))
+                      .map((b, idx) => (
+                        <div key={idx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                           <div className="bg-slate-50/80 px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <span className="h-8 w-8 rounded bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-700 shadow-sm">
+                                  {b.box_number}
+                                </span>
+                                <span className="font-semibold text-slate-700">Box #{b.box_number}</span>
+                              </div>
+                              <div className="flex items-center gap-4 text-sm font-medium text-slate-600">
+                                 <span className="flex items-center gap-1.5"><FiBox className="text-slate-400"/> {b.pieces || 0} Pcs</span>
+                                 <span className="flex items-center gap-1.5"><TbWeight className="text-slate-400"/> {weight3(b.weight)} kg</span>
+                              </div>
+                           </div>
+                           
+                           <div className="overflow-x-auto">
+                              <table className="w-full text-sm text-left">
+                                <thead className="bg-white text-slate-500 text-xs uppercase font-semibold border-b border-slate-100">
+                                  <tr>
+                                    <th className="px-4 py-3 pl-6 w-16">#</th>
+                                    <th className="px-4 py-3">Item Name</th>
+                                    <th className="px-4 py-3 text-right">Qty</th>
+                                    <th className="px-4 py-3 text-right">Unit Price</th>
+                                    <th className="px-4 py-3 text-right pr-6">Total</th>
                                   </tr>
-                                ))
-                              ) : (
-                                <tr>
-                                  <td colSpan={5} className="px-3 py-6 text-center text-gray-500">
-                                    No items in this box.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                  {b.items.map((it, i) => (
+                                    <tr key={i} className="hover:bg-slate-50/50">
+                                      <td className="px-4 py-3 pl-6 text-slate-400">{i + 1}</td>
+                                      <td className="px-4 py-3 font-medium text-slate-800">{it?.name || it?.item_name || "—"}</td>
+                                      <td className="px-4 py-3 text-right tabular-nums text-slate-600">{it?.piece_no ?? it?.pieces ?? 0}</td>
+                                      <td className="px-4 py-3 text-right tabular-nums text-slate-600">{money(it?.unit_price ?? it?.unitPrice)}</td>
+                                      <td className="px-4 py-3 text-right tabular-nums pr-6 font-medium text-slate-800">
+                                        {money(it?.total_price ?? (Number(it?.piece_no ?? 0) * Number(it?.unit_price ?? 0)))}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {!b.items.length && (
+                                    <tr><td colSpan={5} className="px-6 py-4 text-center text-slate-400 italic">No items listed in this box</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                           </div>
                         </div>
-                      </div>
                     ))}
-                </div>
-              )}
+                 </div>
+               )}
             </div>
 
-            {/* (Optional) Flat items table */}
-            {flatItems.length > 0 && (
-              <div className="rounded-xl border bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b bg-gray-50 font-semibold">All Items (Flat)</div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-[820px] w-full text-sm">
-                    <thead className="bg-gray-100 border-b border-gray-200">
-                      <tr className="text-left text-gray-600">
-                        <th className="px-3 py-2 w-14 text-center">Slno</th>
-                        <th className="px-3 py-2">Name</th>
-                        <th className="px-3 py-2 w-16 text-center">Box</th>
-                        <th className="px-3 py-2 w-28 text-right">Pieces</th>
-                        <th className="px-3 py-2 w-28 text-right">Unit Price</th>
-                        <th className="px-3 py-2 w-28 text-right">Total Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {flatItems.map((it, i) => (
-                        <tr key={`all-${i}`} className={i % 2 ? "bg-white" : "bg-gray-50"}>
-                          <td className="px-3 py-2 text-center text-gray-500">{it?.slno || i + 1}</td>
-                          <td className="px-3 py-2">{it?.name || it?.item_name || "—"}</td>
-                          <td className="px-3 py-2 text-center tabular-nums">
-                            {it?.box_number ?? it?.boxNo ?? it?.box ?? "—"}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {Number(it?.piece_no ?? it?.pieces ?? 0)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">{money(it?.unit_price ?? it?.unitPrice)} SAR</td>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {money(
-                              it?.total_price ??
-                              (Number(it?.piece_no ?? it?.pieces ?? 0) * Number(it?.unit_price ?? 0))
-                            )} SAR
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Footer actions */}
-            <div className="flex items-center justify-end gap-3">
-         
-              <button
-                onClick={() => navigate(-1)}
-                className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-900"
-              >
-                Back
-              </button>
-            </div>
           </div>
-        )}
+
+          {/* --- RIGHT COLUMN (1/3) --- */}
+          <div className="space-y-6">
+             
+             {/* Financial Summary */}
+             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <HiOutlineCurrencyDollar className="h-5 w-5 text-emerald-500" /> Payment Summary
+                </h3>
+                
+                <div className="space-y-3">
+                   <div className="flex justify-between text-sm text-slate-600">
+                      <span>Total Cost</span>
+                      <span className="font-medium">{totals.total_cost}</span>
+                   </div>
+                   <div className="flex justify-between text-sm text-slate-600">
+                      <span>Bill Charges</span>
+                      <span className="font-medium">{totals.bill_charges}</span>
+                   </div>
+                   <div className="flex justify-between text-sm text-slate-600">
+                      <span>VAT ({totals.vat_percentage}%)</span>
+                      <span className="font-medium">{totals.vat_cost}</span>
+                   </div>
+                   
+                   <div className="border-t border-slate-100 my-2 pt-2 flex justify-between items-center">
+                      <span className="font-bold text-slate-800">Net Total</span>
+                      <span className="font-bold text-xl text-emerald-600">{totals.net_total} <span className="text-sm font-medium text-emerald-400">SAR</span></span>
+                   </div>
+                </div>
+             </div>
+
+             {/* Shipment Details */}
+             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                   <FiFileText className="h-5 w-5 text-indigo-500" /> Shipment Details
+                </h3>
+                
+                <div className="divide-y divide-slate-50">
+                   <InfoRow icon={FiTruck} label="Shipping Method" value={pickOne(cargo, ["shipping_method.name", "shipping_method"])} />
+                   <InfoRow icon={FiCreditCard} label="Payment Method" value={pickOne(cargo, ["payment_method.name", "payment_method"])} />
+                   <InfoRow icon={FiMapPin} label="Delivery Type" value={pickOne(cargo, ["delivery_type.name", "delivery_type"])} />
+                   <InfoRow icon={FiUser} label="Collected By" value={cargo?.collected_by} />
+                   
+                   <div className="py-3">
+                     <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Tracking Codes</div>
+                     <div className="flex flex-col gap-2">
+                        <CopyBadge label="LRL" text={cargo?.lrl_tracking_code} />
+                        <CopyBadge label="Ref" text={cargo?.tracking_no} />
+                     </div>
+                   </div>
+                </div>
+             </div>
+
+             {/* Remarks */}
+             {cargo?.special_remarks && (
+               <div className="bg-amber-50 rounded-xl border border-amber-100 p-4">
+                  <h4 className="font-bold text-amber-800 text-sm mb-2 flex items-center gap-2">
+                    <FiActivity /> Special Remarks
+                  </h4>
+                  <p className="text-sm text-amber-700 leading-relaxed">
+                    {cargo.special_remarks}
+                  </p>
+               </div>
+             )}
+
+          </div>
+
+        </div>
       </div>
     </div>
   );

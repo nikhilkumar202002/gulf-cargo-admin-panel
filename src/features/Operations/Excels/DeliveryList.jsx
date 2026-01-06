@@ -19,6 +19,14 @@ const errL = (...a) => DEBUG && console.error("[DeliveryList]", ...a);
 const truthy = (v) => !(v == null || (typeof v === "string" && v.trim() === ""));
 const fmt = (v) => (v === 0 || v ? String(v) : "—");
 
+const cleanJoin = (arr, separator = ", ") =>
+  arr
+    .filter(truthy)
+    .join(separator)
+    .replace(/\r?\n+/g, separator)
+    .replace(new RegExp(`\\s*${separator.trim()}\\s*${separator.trim()}+`, "g"), separator)
+    .trim();
+
 /** Unwrap cargo from several possible shapes */
 const unwrapCargo = (raw) => {
   const d = raw?.data ?? raw;
@@ -46,54 +54,81 @@ const extractItems = (c = {}) => {
   return [];
 };
 
-// FIX: Calculate Box Count
+// Calculate Box Count
 const getBoxCount = (c = {}) => {
-  // 1. Check explicit box_count field first
   if (c?.box_count != null && !isNaN(Number(c.box_count))) return Number(c.box_count);
-
-  // 2. Count the structure of boxes (Array or Object)
   if (Array.isArray(c?.boxes)) return c.boxes.length;
   if (c?.boxes && typeof c.boxes === "object") return Object.keys(c.boxes).length;
-
-  // 3. Fallback: Count unique box numbers defined in items
   const items = extractItems(c);
   if (items.length > 0) {
     const uniq = new Set(items.map((it) => String(it?.box_number ?? it?.box_no ?? "1")));
     return uniq.size || 1;
   }
-  
   return 0;
 };
 
 const sumWeight = (items = []) =>
   items.reduce((s, it) => s + Number(it?.weight ?? it?.weight_kg ?? 0), 0);
 
-/** Receiver/Consignee address & state with lots of fallbacks */
-const consigneeAddress = (c = {}, party = null) => {
-  const parts = [
-    // Prefer party address if present
-    party?.address ?? [party?.address_line1, party?.address_line2].filter(truthy).join(", "),
-    party?.city ?? party?.district,
-    party?.state,
-    party?.country,
-    party?.postal_code ?? party?.pincode,
-
-    // Fallback from cargo fields
-    c.receiver_address ?? c.consignee_address,
-    c.receiver_city ?? c.consignee_city,
-    c.receiver_district ?? c.consignee_district,
-    c.receiver_state ?? c.consignee_state,
-    c.receiver_country ?? c.consignee_country,
-    c.receiver_postal_code ?? c.receiver_pincode ?? c.consignee_pincode,
-  ].filter(truthy);
-
-  return parts
-    .join(", ")
-    .replace(/\r?\n+/g, ", ")
-    .replace(/\s*,\s*,+/g, ", ")
-    .replace(/,\s*$/g, "")
-    .trim();
+// --- Weight Breakdown Helper (10+20+30) ---
+const parseBoxWeights = (raw) => {
+  if (raw == null || raw === "" || raw === "null") return [];
+  try {
+    if (typeof raw === "string") {
+      if (raw.includes(",") && !raw.trim().startsWith("{") && !raw.trim().startsWith("[")) {
+        return raw.split(",").map(s => Number(s.trim())).filter(n => Number.isFinite(n));
+      }
+      return parseBoxWeights(JSON.parse(raw));
+    }
+    if (Array.isArray(raw)) return raw.map(Number).filter(Number.isFinite);
+    if (typeof raw === "object") return Object.values(raw).map(Number).filter(Number.isFinite);
+  } catch { /* ignore */ }
+  return [];
 };
+
+const getWeightBreakdown = (c) => {
+    // 1. Try parsed box_weight
+    let weights = parseBoxWeights(c.box_weight);
+    
+    // 2. Try boxes array/object
+    if (weights.length === 0) {
+        if (Array.isArray(c.boxes)) {
+            weights = c.boxes.map(b => Number(b.weight || b.box_weight || 0));
+        } else if (c.boxes && typeof c.boxes === 'object') {
+            weights = Object.values(c.boxes).map(b => Number(b.weight || b.box_weight || 0));
+        }
+    }
+
+    // 3. Filter valid weights
+    weights = weights.filter(w => w > 0);
+
+    // 4. Return formatted string or total weight if single/empty
+    if (weights.length > 1) {
+        return weights.join("+");
+    } else if (weights.length === 1) {
+        return String(weights[0]);
+    }
+    
+    // Fallback
+    const total = Number(c.total_weight);
+    return Number.isFinite(total) && total > 0 ? String(total) : "—";
+};
+
+// --- Address Logic ---
+const addressFromParty = (p) => {
+  if (!p) return "";
+  const line = [p.address, p.address_line1, p.address_line2].filter(truthy).join(", ");
+  return cleanJoin([line, p.city, p.district ?? p.dist, p.state, p.country]);
+};
+
+const addressFromCargo = (pfx, c = {}) =>
+  cleanJoin([
+    c?.[`${pfx}_address`],
+    c?.[`${pfx}_city`],
+    c?.[`${pfx}_district`] ?? c?.[`${pfx}_dist`],
+    c?.[`${pfx}_state`],
+    c?.[`${pfx}_country`],
+  ]);
 
 const consigneeState = (c = {}, party = null) =>
   party?.state ??
@@ -101,24 +136,39 @@ const consigneeState = (c = {}, party = null) =>
   c.consignee_state ??
   "";
 
-/** FIX: List keys if boxes exist; else default to empty/dash (removed booking_no fallback) */
-const boxNumberDisplay = (c = {}) => {
-  if (c?.boxes && typeof c.boxes === "object") {
-    // If it's an object of boxes (key = box number)
-    const keys = Object.keys(c.boxes).sort((a, b) => Number(a) - Number(b));
-    if (keys.length) return keys.join(", ");
+// --- Phone Logic ---
+const phonesOf = (pOrPrefix, maybeCargo) => {
+  if (typeof pOrPrefix === "string") {
+    const pfx = pOrPrefix;
+    const o = maybeCargo ?? {};
+    const nums = [
+      o[`${pfx}_contact_number`],
+      o[`${pfx}_phone`],
+      o[`${pfx}_mobile`],
+      o?.contact_number,
+      o?.phone,
+      o?.mobile,
+    ].filter(truthy);
+    return { phones: Array.from(new Set(nums)) };
   }
-  
-  // If no boxes object, check items for unique box numbers
-  const items = extractItems(c);
-  if (items.length > 0) {
-     const uniq = new Set(items.map(it => it?.box_number ?? it?.box_no).filter(truthy));
-     if (uniq.size > 0) {
-         return Array.from(uniq).sort((a, b) => Number(a) - Number(b)).join(", ");
-     }
-  }
+  const p = pOrPrefix ?? {};
+  const nums = [p.contact_number, p.phone, p.mobile, p.mobile_number].filter(truthy);
+  return { phones: Array.from(new Set(nums)) };
+};
 
-  return "—"; 
+const stripCountryCode = (phone) => {
+  if (!phone) return "";
+  let s = String(phone).replace(/[^0-9]/g, ""); 
+  const codes = ["966", "971", "965", "968", "973", "974", "91", "92", "880", "977", "63", "62", "94", "20", "249"];
+  for (const c of codes) {
+    if (s.startsWith(c)) {
+      if (s.length - c.length >= 7) return s.slice(c.length);
+    }
+    if (s.startsWith("00" + c)) {
+        if (s.length - (c.length + 2) >= 7) return s.slice(c.length + 2);
+    }
+  }
+  return s; 
 };
 
 /** IDs must come from the cargo detail */
@@ -217,18 +267,15 @@ export default function DeliveryList() {
                 if (!truthy(sId) && truthy(cargo?.sender_name ?? cargo?.shipper_name)) {
                   const name = cargo?.sender_name ?? cargo?.shipper_name;
                   sId = await findPartyIdByName(name, "sender");
-                  info("Sender ID resolved by name", { cargo_id: cid, name, sId });
                 }
                 if (!truthy(rId) && truthy(cargo?.receiver_name ?? cargo?.consignee_name)) {
                   const name = cargo?.receiver_name ?? cargo?.consignee_name;
                   rId = await findPartyIdByName(name, "receiver");
-                  info("Receiver ID resolved by name", { cargo_id: cid, name, rId });
                 }
 
                 return { ...cargo, sender_id: sId ?? null, receiver_id: rId ?? null };
               } catch (e) {
                 if (e?.response?.status === 404) { warn("Cargo not found (404)", { cid }); return null; }
-                warn("getCargoById failed", cid, e?.message);
                 return null;
               }
             })
@@ -256,14 +303,6 @@ export default function DeliveryList() {
       for (const c of cargos) {
         const s = getSenderId(c);
         const r = getReceiverId(c);
-
-        if (!truthy(s) || !truthy(r)) {
-          warn("Cargo missing party IDs; backend data may be incomplete", {
-            cargo_id: c?.id, s, r,
-            sender_name: c?.sender_name ?? c?.shipper_name ?? null,
-            receiver_name: c?.receiver_name ?? c?.consignee_name ?? null,
-          });
-        }
         if (truthy(s) && !partyMap[String(s)]) need.add(String(s));
         if (truthy(r) && !partyMap[String(r)]) need.add(String(r));
       }
@@ -283,10 +322,8 @@ export default function DeliveryList() {
             slice.map(async (pid) => {
               try {
                 const party = await getPartyByIdFlexible(Number(pid));
-                info("Party fetched via /party/:id", { party_id: pid, ok: !!party });
                 return [pid, party ?? null];
               } catch (e) {
-                warn("getPartyByIdFlexible failed", pid, e?.message);
                 return [pid, null];
               }
             })
@@ -310,33 +347,64 @@ export default function DeliveryList() {
   }, [cargos]);
 
   const rows = useMemo(() => (Array.isArray(cargos) ? cargos : []), [cargos]);
+  
   const receiverPartyFor = (cargo) => {
     const id = getReceiverId(cargo);
+    return truthy(id) ? partyMap[String(id)] ?? null : null;
+  };
+
+  const senderPartyFor = (cargo) => {
+    const id = getSenderId(cargo);
     return truthy(id) ? partyMap[String(id)] ?? null : null;
   };
 
   /** ===== Excel export ===== */
   const buildExportRow = (c, idx) => {
     const items = extractItems(c);
-    const pieces = getBoxCount(c); // FIX: Use box count
+    const pieces = getBoxCount(c);
 
+    // Weights
+    const weightBreakdown = getWeightBreakdown(c);
     const weightRaw = Number(c?.total_weight);
     const weight = Number.isFinite(weightRaw) ? weightRaw : sumWeight(items);
-    const weightDisplay = Number.isFinite(weight) ? Math.trunc(weight) : "";
+    const totalWeight = Number.isFinite(weight) ? Math.trunc(weight) : "";
 
+    // Parties
     const rParty = receiverPartyFor(c);
-    const address = consigneeAddress(c, rParty);
+    const sParty = senderPartyFor(c);
+    
+    // Consignee
+    const consigneeName = rParty?.name ?? c?.receiver_name ?? c?.consignee_name ?? "";
+    const consigneeAddr = addressFromParty(rParty) || addressFromCargo("receiver", c) || "";
+    const consigneeFull = cleanJoin([consigneeName, consigneeAddr], ", ");
+    
+    // Mobile (No country code)
+    const { phones: rPhones } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
+    const mobileNo = rPhones[0] ? stripCountryCode(rPhones[0]) : "";
+    
+    // Post Code
+    const postCode = rParty?.postal_code ?? rParty?.pincode ?? c?.receiver_postal_code ?? c?.receiver_pincode ?? "";
+
+    // Shipper (Name + Phone, No Comma)
+    const shipperName = sParty?.name ?? c?.sender_name ?? c?.shipper_name ?? "";
+    const { phones: sPhones } = sParty ? phonesOf(sParty) : phonesOf("sender", c);
+    const shipperPhone = sPhones[0] ? stripCountryCode(sPhones[0]) : "";
+    const shipperFull = `${shipperName} ${shipperPhone}`.trim();
+
+    // State
     const state = consigneeState(c, rParty);
-    const boxNo = boxNumberDisplay(c);
 
     return {
-      "Sl No": idx + 1,
-      "Booking Number": c?.booking_no ?? c?.id ?? "",
-      "No. of Piece": pieces || 0,
-      "Weight (kg)": weightDisplay,
-      "Consignee Address": address || "",
+      "SL NO": idx + 1,
+      "BILL NO": c?.booking_no ?? c?.id ?? "",
+      "NO.PCS": pieces || 0,
+      "KG": weightBreakdown,
+      "TOTAL WGT": totalWeight,
       "State": state || "",
-      "Box Number": boxNo || "",
+      "CONSIGNEE": consigneeFull,
+      "POST CODE": postCode,
+      "MOBILE NUMBER": mobileNo,
+      "SHIPPER": shipperFull
     };
   };
 
@@ -357,7 +425,7 @@ export default function DeliveryList() {
   /** ===== UI ===== */
   return (
     <section className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl px-4 py-6">
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-6">
         {/* Header */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -383,31 +451,43 @@ export default function DeliveryList() {
                 Loading parties…
               </span>
             )}
+            <button
+              onClick={() => navigate(-1)}
+              className="rounded-lg bg-slate-800 px-3 py-1.5 font-medium text-white hover:bg-black"
+            >
+              Back
+            </button>
           </div>
         </div>
 
         {/* Table */}
-        <div className="overflow-auto rounded-2xl border border-slate-200 bg-white">
-          <table className="min-w-[1000px] w-full text-sm [&_td]:align-top [&_th]:align-top">
+        <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-[1400px] w-full text-xs [&_td]:align-middle [&_th]:align-middle">
             <colgroup>
-              <col className="w-[70px]" />
-              <col className="w-[160px]" />
-              <col className="w-[140px]" />
-              <col className="w-[140px]" />
-              <col className="w-[440px]" />
-              <col className="w-[180px]" />
-              <col className="w-[240px]" />
+              <col className="w-[50px]" />  {/* SL */}
+              <col className="w-[120px]" /> {/* Bill */}
+              <col className="w-[60px]" />  {/* Pcs */}
+              <col className="w-[100px]" /> {/* KG (10+20) */}
+              <col className="w-[80px]" />  {/* Total Wgt */}
+              <col className="w-[100px]" /> {/* State */}
+              <col className="w-[300px]" /> {/* Consignee */}
+              <col className="w-[80px]" />  {/* Post */}
+              <col className="w-[100px]" /> {/* Mobile */}
+              <col className="w-[200px]" /> {/* Shipper */}
             </colgroup>
 
-            <thead className="bg-slate-50">
-              <tr className="text-left text-slate-700">
-                <th className="px-4 py-3">Sl No</th>
-                <th className="px-4 py-3">Booking Number</th>
-                <th className="px-4 py-3 text-right">No. of Piece</th>
-                <th className="px-4 py-3 text-right">Weight (kg)</th>
-                <th className="px-4 py-3">Consignee Address</th>
-                <th className="px-4 py-3">State</th>
-                <th className="px-4 py-3">Box Number</th>
+            <thead className="bg-slate-100 text-slate-700 font-bold uppercase">
+              <tr className="text-left border-b border-slate-200">
+                <th className="px-3 py-3">SL NO</th>
+                <th className="px-3 py-3">BILL NO</th>
+                <th className="px-3 py-3 text-center">NO.PCS</th>
+                <th className="px-3 py-3 text-center">KG</th>
+                <th className="px-3 py-3 text-center">TOTAL WGT</th>
+                <th className="px-3 py-3">State</th>
+                <th className="px-3 py-3">CONSIGNEE</th>
+                <th className="px-3 py-3">POST CODE</th>
+                <th className="px-3 py-3">MOBILE NUMBER</th>
+                <th className="px-3 py-3">SHIPPER</th>
               </tr>
             </thead>
 
@@ -415,22 +495,22 @@ export default function DeliveryList() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 7 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-3.5 w-3/4 rounded bg-slate-200" />
+                    {Array.from({ length: 10 }).map((__, j) => (
+                      <td key={j} className="px-3 py-3">
+                        <div className="h-3 w-3/4 rounded bg-slate-200" />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : err ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-rose-700">
+                  <td colSpan={10} className="px-4 py-6 text-center text-rose-700">
                     {err}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-600">
+                  <td colSpan={10} className="px-4 py-6 text-center text-slate-600">
                     No cargos found for this shipment.
                   </td>
                 </tr>
@@ -438,53 +518,67 @@ export default function DeliveryList() {
                 rows.map((c, idx) => {
                   const items = extractItems(c);
                   
-                  // FIX 1: Use getBoxCount instead of sumPieces
+                  // 1. Pieces
                   const pieces = getBoxCount(c);
 
+                  // 2. Weights
+                  const weightBreakdown = getWeightBreakdown(c);
                   const weightRaw = Number(c?.total_weight);
                   const weight = Number.isFinite(weightRaw) ? weightRaw : sumWeight(items);
-                  const weightDisplay = Number.isFinite(weight) ? String(Math.trunc(weight)) : "—";
+                  const totalWeight = Number.isFinite(weight) ? String(Math.trunc(weight)) : "—";
 
+                  // 3. Parties
                   const rParty = receiverPartyFor(c);
+                  const sParty = senderPartyFor(c);
 
-                  const address = consigneeAddress(c, rParty);
-                  const state = consigneeState(c, rParty);
+                  // 4. Consignee (Name + Address)
+                  const consigneeName = rParty?.name ?? c?.receiver_name ?? c?.consignee_name ?? "—";
+                  const consigneeAddr = addressFromParty(rParty) || addressFromCargo("receiver", c) || "—";
                   
-                  // FIX 2: Use boxNumberDisplay helper
-                  const boxNo = boxNumberDisplay(c);
+                  // 5. Post Code
+                  const postCode = rParty?.postal_code ?? rParty?.pincode ?? c?.receiver_postal_code ?? c?.receiver_pincode ?? "—";
+
+                  // 6. Mobile (Strip Code)
+                  const { phones: rPhones } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
+                  const mobileNo = rPhones[0] ? stripCountryCode(rPhones[0]) : "—";
+
+                  // 7. Shipper (Name + Phone, No Comma)
+                  const shipperName = sParty?.name ?? c?.sender_name ?? c?.shipper_name ?? "—";
+                  const { phones: sPhones } = sParty ? phonesOf(sParty) : phonesOf("sender", c);
+                  const shipperPhone = sPhones[0] ? stripCountryCode(sPhones[0]) : "";
+                  const shipperFull = `${shipperName} ${shipperPhone}`.trim();
+
+                  // 8. State
+                  const state = consigneeState(c, rParty);
 
                   return (
                     <tr
                       key={c.id ?? `${idx}-${c?.booking_no ?? ""}`}
-                      className={idx % 2 ? "bg-white" : "bg-slate-50/30 hover:bg-slate-50"}
+                      className={idx % 2 ? "bg-white" : "bg-slate-50/50 hover:bg-slate-50"}
                     >
-                      <td className="px-4 py-3">{idx + 1}</td>
-                      <td className="px-4 py-3 font-mono">{fmt(c?.booking_no ?? c?.id)}</td>
-                      <td className="px-4 py-3 text-right">{fmt(pieces)}</td>
-                      <td className="px-4 py-3 text-right">{fmt(weightDisplay)}</td>
-                      <td className="px-4 py-3">
-                        {partyLoading && truthy(getReceiverId(c)) && !rParty ? "Loading…" : fmt(address)}
+                      <td className="px-3 py-2">{idx + 1}</td>
+                      <td className="px-3 py-2 font-mono font-medium">{fmt(c?.booking_no ?? c?.id)}</td>
+                      <td className="px-3 py-2 text-center">{fmt(pieces)}</td>
+                      <td className="px-3 py-2 text-center font-mono text-[11px] leading-tight max-w-[120px] break-words">
+                         {weightBreakdown}
                       </td>
-                      <td className="px-4 py-3">
-                        {partyLoading && truthy(getReceiverId(c)) && !rParty ? "Loading…" : fmt(state)}
+                      <td className="px-3 py-2 text-center font-semibold">{fmt(totalWeight)}</td>
+                      <td className="px-3 py-2">{fmt(state)}</td>
+                      
+                      <td className="px-3 py-2">
+                         <div className="font-semibold text-slate-900">{consigneeName}</div>
+                         <div className="text-[11px] text-slate-600 leading-tight">{consigneeAddr}</div>
                       </td>
-                      {/* FIX 3: Display actual box numbers */}
-                      <td className="px-4 py-3">{fmt(boxNo)}</td>
+
+                      <td className="px-3 py-2">{fmt(postCode)}</td>
+                      <td className="px-3 py-2 font-mono">{mobileNo}</td>
+                      <td className="px-3 py-2 text-[11px] leading-tight">{shipperFull}</td>
                     </tr>
                   );
                 })
               )}
             </tbody>
           </table>
-        </div>
-
-        <div className="mt-3">
-          <button
-            onClick={() => navigate(-1)}
-            className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
-          >
-            Back
-          </button>
         </div>
       </div>
     </section>

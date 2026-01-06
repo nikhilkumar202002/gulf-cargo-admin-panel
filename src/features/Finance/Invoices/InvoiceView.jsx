@@ -220,7 +220,7 @@ const extractParty = (p) => ({
 
 // --- UPDATED MATCH HELPER: CHECKS NAME AND PHONE ---
 const matchByNameAndPhone = (name, phone, list) => {
-  if (!name) return null;
+  if (!name || !list) return null;
   const lowName = name.toLowerCase().trim();
   const cleanPhone = phone ? String(phone).replace(/[^0-9]/g, "") : "";
 
@@ -380,22 +380,21 @@ export default function InvoiceView({
   }, [id, injected, hydratedFromState]);
 
   /* ------------- Fetch branch ------------- */
+  // FIX #1: Correct Branch Loading Logic
   useEffect(() => {
-    if ((!shipment && !loggedInUser) || branch) return; 
-
-    const idCandidates = (
-      shipment
-        ? [shipment.branch_id, shipment.branch?.id, shipment.origin_branch_id]
-        : []
-    )
-      .concat([loggedInUser?.branch?.id, loggedInUser?.branch_id])
-      .map((v) => (v == null ? null : String(v).trim()))
-      .filter(Boolean);
-
-    const finalId =
-      loggedInUser?.branch_id || loggedInUser?.branch?.id || idCandidates[0];
+    // Determine the target branch ID:
+    // 1. Shipment's branch (Highest priority)
+    // 2. Logged-in user's branch (Fallback)
+    const shipmentBranchId = shipment?.branch_id ?? shipment?.branch?.id ?? shipment?.origin_branch_id;
+    const userBranchId = loggedInUser?.branch_id ?? loggedInUser?.branch?.id;
+    
+    // Convert to strings for safe comparison
+    const finalId = shipmentBranchId ? String(shipmentBranchId) : (userBranchId ? String(userBranchId) : null);
 
     if (!finalId) return;
+
+    // OPTIMIZATION: If the branch currently in state matches the needed ID, do nothing.
+    if (branch && String(branch.id) === finalId) return;
 
     let alive = true;
     (async () => {
@@ -418,7 +417,7 @@ export default function InvoiceView({
   useEffect(() => {
     if (!shipment) return;
 
-    const fetchParty = async (role, allParties) => {
+    const fetchParty = async (role) => {
       const isSender = role === "sender";
 
       // 1. TRUST THE SHIPMENT OBJECT FIRST if it's already fully populated
@@ -460,11 +459,11 @@ export default function InvoiceView({
         } catch {}
       }
 
-      // 3. Fallback: Search by Name AND Phone
+      // 3. Fallback: Search by Name AND Phone (Only if ID failed)
+      // FIX #2: Removed `allParties` dependency. Only fetch specific name from server.
       if (name) {
-        const list =
-          allParties ||
-          parsePartyList(await getParties({ search: name }).catch(() => []));
+        // Fetch only relevant parties from server
+        const list = parsePartyList(await getParties({ search: name }).catch(() => []));
         
         const roleFiltered = list.filter((p) => {
           const typeId = Number(p.customer_type_id);
@@ -543,10 +542,10 @@ export default function InvoiceView({
 
     let alive = true;
     (async () => {
-      const allParties = parsePartyList(await getParties().catch(() => []));
+      // FIX #2: Removed global `await getParties()` call here
       const [sp, rp] = await Promise.all([
-        fetchParty("sender", allParties),
-        fetchParty("receiver", allParties),
+        fetchParty("sender"),
+        fetchParty("receiver"),
       ]);
       if (!alive) return;
       setSenderParty(sp);
@@ -1116,7 +1115,8 @@ export default function InvoiceView({
        // Add the actual item
        structuredRows.push(item);
     });
-// --- CHANGED LOGIC START: Slice based on ITEM COUNT only ---
+
+   // --- CHANGED LOGIC START: Slice based on ITEM COUNT only ---
               const LEFT_ROWS_LIMIT = 25;
               const RIGHT_ROWS_LIMIT = 20;
 
@@ -1159,6 +1159,7 @@ export default function InvoiceView({
               const leftFillers = Array.from({ length: Math.max(0, LEFT_ROWS_LIMIT - leftItemCount) });
               const rightFillers = Array.from({ length: Math.max(0, RIGHT_ROWS_LIMIT - rightItemCount) });
               // --- CHANGED LOGIC END ---
+
     const renderRow = (row, idx, prefix) => {
         if(row.isHeader) {
             return (

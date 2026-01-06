@@ -67,16 +67,20 @@ const cleanJoin = (arr, separator = ", ") =>
     .replace(new RegExp(`\\s*${separator.trim()}\\s*${separator.trim()}+`, "g"), separator)
     .trim();
 
+// --- UPDATED: Fixed district fetching and combined city/district ---
 const addressFromParty = (p) => {
   if (!p) return "";
   const line = [p.address, p.address_line1, p.address_line2].filter(truthy).join(", ");
-  return cleanJoin([line, p.city ?? p.district, p.state, p.country]);
+  // Changed: Include both city AND district (and fallback for 'dist')
+  return cleanJoin([line, p.city, p.district ?? p.dist, p.state, p.country]);
 };
+
+// --- UPDATED: Added fallback for _dist key ---
 const addressFromCargo = (pfx, c = {}) =>
   cleanJoin([
     c?.[`${pfx}_address`],
     c?.[`${pfx}_city`],
-    c?.[`${pfx}_district`],
+    c?.[`${pfx}_district`] ?? c?.[`${pfx}_dist`], // Check both keys
     c?.[`${pfx}_state`],
     c?.[`${pfx}_country`],
   ]);
@@ -251,8 +255,6 @@ export default function ShipmentManifest() {
         const next = { ...prev };
         results.forEach((r, i) => {
           if (r.status === "fulfilled") {
-            // FIX: coreService already normalizes the data.
-            // We use r.value directly.
             const b = r.value;
             if (b) next[toFetch[i]] = b;
           }
@@ -305,7 +307,6 @@ export default function ShipmentManifest() {
     const senderPart = `${senderName} ${senderPhone}`;
 
     // Normalize Branch Address
-    // 'branch_address' comes from coreService, 'address' might come from raw API
     const bAddr = branch?.branch_address ?? branch?.address ?? "";
     const bLoc = branch?.branch_location ?? branch?.location ?? "";
     
@@ -321,8 +322,15 @@ export default function ShipmentManifest() {
     const consigneeAddr = addressFromParty(rParty) || addressFromCargo("receiver", c) || "";
     const pin = rParty?.postal_code ?? rParty?.pincode ?? c?.receiver_postal_code ?? c?.receiver_pincode ?? "";
     const consigneePin = pin ? `PIN ${pin}` : "";
-    const { phones: rPhonesArr } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
-    const consigneePhones = rPhonesArr.length ? `PHONE ${rPhonesArr.join("/")}` : "";
+
+    // --- UPDATED: Phone + WhatsApp Logic ---
+    const { phones: rPhonesArr, whatsapp: rWhatsapp } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
+    
+    const allPhones = [...rPhonesArr];
+    if (truthy(rWhatsapp) && !allPhones.includes(rWhatsapp)) {
+        allPhones.push(rWhatsapp);
+    }
+    const consigneePhones = allPhones.length ? `PHONE ${allPhones.join(" / ")}` : "";
     
     const fullConsigneeString = cleanJoin([consigneeName, consigneeAddr, consigneePin, consigneePhones], ", ");
 
@@ -516,8 +524,14 @@ export default function ShipmentManifest() {
                   const consigneeAddr = addressFromParty(rParty) || addressFromCargo("receiver", c) || "—";
                   const pinRaw = rParty?.postal_code ?? rParty?.pincode ?? c?.receiver_postal_code ?? c?.receiver_pincode;
                   const consigneePin = pinRaw ? `PIN ${pinRaw}` : "";
-                  const { phones: rPhonesArr } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
-                  const consigneePhones = rPhonesArr.length ? `PHONE ${rPhonesArr.join("/")}` : "";
+
+                  // --- UPDATED: Phone + WhatsApp Logic ---
+                  const { phones: rPhonesArr, whatsapp: rWhatsapp } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
+                  const allPhones = [...rPhonesArr];
+                  if (truthy(rWhatsapp) && !allPhones.includes(rWhatsapp)) {
+                    allPhones.push(rWhatsapp);
+                  }
+                  const consigneePhones = allPhones.length ? `PHONE ${allPhones.join(" / ")}` : "";
 
                   const consigneeText = cleanJoin([consigneeName, consigneeAddr, consigneePin, consigneePhones], ", ");
 
