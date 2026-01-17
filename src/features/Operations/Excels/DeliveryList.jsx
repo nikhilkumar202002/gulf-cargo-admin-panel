@@ -145,14 +145,25 @@ const phonesOf = (pOrPrefix, maybeCargo) => {
       o[`${pfx}_contact_number`],
       o[`${pfx}_phone`],
       o[`${pfx}_mobile`],
+      o[`${pfx}_whatsapp`],
+      o[`${pfx}_whatsapp_number`],
       o?.contact_number,
       o?.phone,
       o?.mobile,
+      o?.whatsapp,
+      o?.whatsapp_number
     ].filter(truthy);
     return { phones: Array.from(new Set(nums)) };
   }
   const p = pOrPrefix ?? {};
-  const nums = [p.contact_number, p.phone, p.mobile, p.mobile_number].filter(truthy);
+  const nums = [
+    p.contact_number, 
+    p.phone, 
+    p.mobile, 
+    p.mobile_number,
+    p.whatsapp,
+    p.whatsapp_number
+  ].filter(truthy);
   return { phones: Array.from(new Set(nums)) };
 };
 
@@ -378,14 +389,14 @@ export default function DeliveryList() {
     const consigneeAddr = addressFromParty(rParty) || addressFromCargo("receiver", c) || "";
     const consigneeFull = cleanJoin([consigneeName, consigneeAddr], ", ");
     
-    // Mobile (No country code)
+    // Mobile (Join all numbers with /)
     const { phones: rPhones } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
-    const mobileNo = rPhones[0] ? stripCountryCode(rPhones[0]) : "";
+    const mobileNo = rPhones.map(stripCountryCode).filter(Boolean).join(" / ");
     
     // Post Code
     const postCode = rParty?.postal_code ?? rParty?.pincode ?? c?.receiver_postal_code ?? c?.receiver_pincode ?? "";
 
-    // Shipper (Name + Phone, No Comma)
+    // Shipper (Name + Single Phone)
     const shipperName = sParty?.name ?? c?.sender_name ?? c?.shipper_name ?? "";
     const { phones: sPhones } = sParty ? phonesOf(sParty) : phonesOf("sender", c);
     const shipperPhone = sPhones[0] ? stripCountryCode(sPhones[0]) : "";
@@ -538,11 +549,13 @@ export default function DeliveryList() {
                   // 5. Post Code
                   const postCode = rParty?.postal_code ?? rParty?.pincode ?? c?.receiver_postal_code ?? c?.receiver_pincode ?? "—";
 
-                  // 6. Mobile (Strip Code)
+                  // 6. Mobile (Join all numbers with /)
                   const { phones: rPhones } = rParty ? phonesOf(rParty) : phonesOf("receiver", c);
-                  const mobileNo = rPhones[0] ? stripCountryCode(rPhones[0]) : "—";
+                  const mobileNo = rPhones.length > 0 
+                      ? rPhones.map(stripCountryCode).filter(Boolean).join(" / ") 
+                      : "—";
 
-                  // 7. Shipper (Name + Phone, No Comma)
+                  // 7. Shipper (Name + Single Phone)
                   const shipperName = sParty?.name ?? c?.sender_name ?? c?.shipper_name ?? "—";
                   const { phones: sPhones } = sParty ? phonesOf(sParty) : phonesOf("sender", c);
                   const shipperPhone = sPhones[0] ? stripCountryCode(sPhones[0]) : "";
