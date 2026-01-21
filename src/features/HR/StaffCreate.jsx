@@ -12,7 +12,7 @@ import "./StaffStyles.css";
 import { createStaff } from "../../services/staffService";
 // [FIX] Added missing imports here
 import { 
-  getBranches, 
+  getActiveBranches, 
   getRoles, 
   getVisaTypes, 
   getActiveDocumentTypes, 
@@ -229,33 +229,33 @@ const StaffCreate = () => {
 
     (async () => {
       // BRANCHES
-      try {
-        setLoadingBranches(true);
-        const res = await getBranches();
-        const arr = toList(res);
-        setBranches(arr);
 
-        // default to logged-in user's branch if available
-        if (!selectedBranch && arr.length) {
-          const auth = (() => {
-            try {
-              return JSON.parse(localStorage.getItem("auth") || "{}");
-            } catch {
-              return {};
-            }
-          })();
-          const myId = auth?.user?.branch?.id ?? auth?.user?.branch_id ?? null;
-          const pickId =
-            (myId && arr.find((b) => String(b.id) === String(myId))?.id) ||
-            arr[0]?.id;
-          if (pickId) setSelectedBranch(String(pickId));
-        }
-      } catch (e) {
-        console.error("Failed to load branches", e);
-        setBranches([]);
-      } finally {
-        setLoadingBranches(false);
-      }
+try {
+  setLoadingBranches(true);
+
+  const arr = await getActiveBranches(); // ✅ ACTIVE branches only
+  setBranches(arr);
+
+  // Default to logged-in user's branch if it exists
+  if (!selectedBranch && arr.length) {
+    let myId = null;
+    try {
+      const auth = JSON.parse(localStorage.getItem("auth") || "{}");
+      myId = auth?.user?.branch?.id ?? auth?.user?.branch_id ?? null;
+    } catch {}
+
+    const pickId =
+      (myId && arr.find((b) => String(b.id) === String(myId))?.id) ||
+      arr[0]?.id;
+
+    if (pickId) setSelectedBranch(String(pickId));
+  }
+} catch (e) {
+  console.error("Failed to load active branches", e);
+  setBranches([]);
+} finally {
+  setLoadingBranches(false);
+}
 
       // VISAS
       try {
@@ -937,28 +937,26 @@ const StaffCreate = () => {
         Staff Branch *
       </label>
       <select
-        className={inputClass("selectedBranch")}
-        disabled={loadingBranches}
-        value={selectedBranch}
-        onChange={(e) => setSelectedBranch(e.target.value)}
-        onBlur={() => markTouched("selectedBranch")}
-        aria-invalid={!!err("selectedBranch")}
-        aria-describedby="branch-err"
-        required
-      >
-        <option value="">
-          {loadingBranches
-            ? "Loading branches..."
-            : branches.length
-            ? "Select branch"
-            : "No active branches found"}
-        </option>
-        {branches.map((b) => (
-          <option key={String(b.id)} value={String(b.id)}>
-            {getBranchLabel(b)}
-          </option>
-        ))}
-      </select>
+  className={inputClass("selectedBranch")}
+  disabled={loadingBranches}
+  value={selectedBranch}
+  onChange={(e) => setSelectedBranch(e.target.value)}
+>
+  <option value="">
+    {loadingBranches
+      ? "Loading branches..."
+      : branches.length
+      ? "Select branch"
+      : "No active branches found"}
+  </option>
+
+  {branches.map((b) => (
+    <option key={String(b.id)} value={String(b.id)}>
+      {getBranchLabel(b)}
+    </option>
+  ))}
+</select>
+
       {err("selectedBranch") && (
         <p id="branch-err" className="mt-1 text-xs text-red-600">
           {errors.selectedBranch}
