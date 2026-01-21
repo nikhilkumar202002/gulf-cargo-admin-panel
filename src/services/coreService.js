@@ -112,14 +112,46 @@ export const getBranches = async (params = {}) => {
     return normalizeList(res).map(normalizeBranch);
   }
 };
-export const getActiveBranches = async (params = {}) => {
-  // Some backends have a dedicated fast endpoint
+
+/* In src/services/coreService.js */
+export const getActiveBranches = async () => {
   try {
-    const res = await api.get("/branches", { params: { status: 1, ...params } });
-    const list = normalizeList(res).map(normalizeBranch);
-    // Double check filtering client-side if backend ignored 'status=1'
-    return list.length > 0 ? list : [];
-  } catch (e) {
+    const PER_PAGE = 10;
+
+    // Page 1
+    const res = await api.get("/branches", {
+      params: { status: 1, per_page: PER_PAGE, page: 1 },
+    });
+
+    const raw = unwrap(res);
+    let list = normalizeList(raw);
+
+    const lastPage =
+      raw?.last_page ??
+      raw?.meta?.last_page ??
+      raw?.data?.last_page ??
+      1;
+
+    // Remaining pages
+    if (lastPage > 1) {
+      const requests = [];
+      for (let page = 2; page <= lastPage; page++) {
+        requests.push(
+          api.get("/branches", {
+            params: { status: 1, per_page: PER_PAGE, page },
+          })
+        );
+      }
+
+      const responses = await Promise.all(requests);
+      responses.forEach((r) => {
+        list = list.concat(normalizeList(r));
+      });
+    }
+
+    return list.map(normalizeBranch);
+  } catch (error) {
+    console.error("Error fetching active branches:", error);
     return [];
   }
 };

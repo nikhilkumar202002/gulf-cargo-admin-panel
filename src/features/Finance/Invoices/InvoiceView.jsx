@@ -380,38 +380,37 @@ export default function InvoiceView({
   }, [id, injected, hydratedFromState]);
 
   /* ------------- Fetch branch ------------- */
-  // FIX #1: Correct Branch Loading Logic
-  useEffect(() => {
-    // Determine the target branch ID:
-    // 1. Shipment's branch (Highest priority)
-    // 2. Logged-in user's branch (Fallback)
-    const shipmentBranchId = shipment?.branch_id ?? shipment?.branch?.id ?? shipment?.origin_branch_id;
-    const userBranchId = loggedInUser?.branch_id ?? loggedInUser?.branch?.id;
-    
-    // Convert to strings for safe comparison
-    const finalId = shipmentBranchId ? String(shipmentBranchId) : (userBranchId ? String(userBranchId) : null);
+ useEffect(() => {
+  if (!shipment) return;
 
-    if (!finalId) return;
+  const shipmentBranchId =
+    shipment?.branch_id ??
+    shipment?.branch?.id ??
+    shipment?.origin_branch_id;
 
-    // OPTIMIZATION: If the branch currently in state matches the needed ID, do nothing.
-    if (branch && String(branch.id) === finalId) return;
+  if (!shipmentBranchId) {
+    console.warn("Invoice: shipment has no branch_id");
+    setBranch(null);
+    return;
+  }
 
-    let alive = true;
-    (async () => {
-      try {
-        const b = await getBranchByIdSmart(finalId);
-        if (b && alive) {
-          setBranch(b);
-        }
-      } catch {
-        if (alive) setBranch(null); 
-      }
-    })();
+  if (branch && String(branch.id) === String(shipmentBranchId)) return;
 
-    return () => {
-      alive = false;
-    };
-  }, [shipment, loggedInUser, branch]);
+  let alive = true;
+  (async () => {
+    try {
+      const b = await getBranchByIdSmart(shipmentBranchId);
+      if (alive) setBranch(b);
+    } catch (e) {
+      if (alive) setBranch(null);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, [shipment]);
+
 
   // fetch Sender/Receiver party once we have shipment basics
   useEffect(() => {

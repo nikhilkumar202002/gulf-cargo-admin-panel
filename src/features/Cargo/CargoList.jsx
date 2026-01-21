@@ -12,7 +12,7 @@ import { TbWeight } from "react-icons/tb";
 import { HiOutlineDocumentText } from "react-icons/hi";
 
 /* API Services */
-import { listCargos, filterCargosByBookingNo } from "../../services/cargoService";
+import { listCargos, filterCargosByBookingNo,getCargoById } from "../../services/cargoService";
 import { getActiveBranches } from "../../services/coreService";
 
 /* Components */
@@ -116,16 +116,23 @@ export default function AllCargoList() {
   const [branches, setBranches] = useState([]); 
 
   // --- Initial Master Data Load ---
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const branchRes = await getActiveBranches({}, token);
-        if(mounted) setBranches(unwrapArray(branchRes));
-      } catch (err) { console.error(err); }
-    })();
-    return () => { mounted = false; };
-  }, [token]);
+useEffect(() => {
+  let mounted = true;
+
+  (async () => {
+    try {
+      const branchList = await getActiveBranches();
+      if (mounted) setBranches(branchList);
+    } catch (err) {
+      console.error("Failed to load branches:", err);
+    }
+  })();
+
+  return () => {
+    mounted = false;
+  };
+}, [token]);
+
 
   // --- Fetch Cargos ---
   const fetchCargos = useCallback(async (currPage, currFilter) => {
@@ -403,7 +410,11 @@ export default function AllCargoList() {
                                 <SlPencil className="h-4 w-4" />
                               </button>
                               <button 
-                                onClick={() => { setSelectedShipment(c); setInvoiceModalOpen(true); }} 
+                                onClick={async () => {
+                                    const fullCargo = await getCargoById(c.id);
+                                    setSelectedShipment(fullCargo);
+                                    setInvoiceModalOpen(true);
+                                  }}
                                 className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                                 title="View Bill/Invoice"
                               >

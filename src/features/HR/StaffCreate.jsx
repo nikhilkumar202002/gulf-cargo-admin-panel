@@ -12,7 +12,7 @@ import "./StaffStyles.css";
 import { createStaff } from "../../services/staffService";
 // [FIX] Added missing imports here
 import { 
-  getActiveBranches, 
+  getBranches, 
   getRoles, 
   getVisaTypes, 
   getActiveDocumentTypes, 
@@ -231,8 +231,8 @@ const StaffCreate = () => {
       // BRANCHES
       try {
         setLoadingBranches(true);
-        const list = await getActiveBranches({}, token);
-        const arr = Array.isArray(list) ? list : [];
+        const res = await getBranches();
+        const arr = toList(res);
         setBranches(arr);
 
         // default to logged-in user's branch if available
