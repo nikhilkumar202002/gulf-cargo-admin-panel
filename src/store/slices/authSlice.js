@@ -6,6 +6,7 @@ import { setToken as setTokenStore, clearToken as clearTokenStore } from "../../
 const getUserFromStorage = () => {
   try {
     const stored = localStorage.getItem("user");
+    // Ensure we don't return "null" as a string
     if (!stored || stored === "undefined" || stored === "null") return null;
     return JSON.parse(stored);
   } catch (e) {
@@ -130,11 +131,11 @@ const slice = createSlice({
         state.status = "loading";
         state.error = null;
       })
-      .addCase(login.fulfilled, (state, { payload }) => {
-        state.status = "succeeded";
-        state.token = payload.token;
-        state.user = payload.user;
-      })
+     .addCase(login.fulfilled, (state, { payload }) => {
+      state.status = "succeeded";
+      state.token = payload.token;
+      state.user = payload.user; // Ensure the payload.user includes branch_id
+    })
       .addCase(login.rejected, (state, { payload }) => {
         state.status = "failed";
         state.error = payload;

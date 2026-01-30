@@ -1,10 +1,14 @@
 // src/pages/InvoiceView.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { normalizeCargoToInvoice, getCargoById } from "../../../services/cargoService";
+import {
+  normalizeCargoToInvoice,
+  getCargoById,
+} from "../../../services/cargoService";
 import { getPartyById, getParties } from "../../../services/partyService";
 import { getBranchByIdSmart } from "../../../services/coreService";
 import InvoiceLogo from "../../../assets/logo.png";
+import { useSelector } from "react-redux";
 import "./invoice.css";
 
 const MONEY_LOCALE = "en-SA";
@@ -117,7 +121,7 @@ const parseBoxWeights = (raw) => {
   if (raw && typeof raw === "object") {
     const keys = Object.keys(raw).sort((a, b) => Number(a) - Number(b));
     return keys.map((k) =>
-      Number.isFinite(Number(raw[k])) ? Number(raw[k]) : 0
+      Number.isFinite(Number(raw[k])) ? Number(raw[k]) : 0,
     );
   }
   // Fallback single number
@@ -207,12 +211,12 @@ const extractParty = (p) => ({
   document_id: p?.document_id || "",
   tel: p?.contact_number || p?.whatsapp_number || "",
   address_line: p?.address || p?.address_line || "",
-  post: p?.post || "", 
+  post: p?.post || "",
   city: p?.city || "",
   pin: p?.postal_code || p?.pincode || "",
   dist: p?.district || "",
   state: p?.state || "",
-  country: p?.country || "", 
+  country: p?.country || "",
   address: p?.address || "",
   phones: formatPhones(p),
   raw: p,
@@ -226,10 +230,12 @@ const matchByNameAndPhone = (name, phone, list) => {
 
   // 1. Try finding Exact Name + Matching Phone (most accurate)
   if (cleanPhone) {
-    const exactMatch = list.find(x => {
-        const xName = (x?.name || "").toLowerCase().trim();
-        const xPhone = String(x?.contact_number || x?.phone || x?.mobile || "").replace(/[^0-9]/g, "");
-        return xName === lowName && xPhone.includes(cleanPhone);
+    const exactMatch = list.find((x) => {
+      const xName = (x?.name || "").toLowerCase().trim();
+      const xPhone = String(
+        x?.contact_number || x?.phone || x?.mobile || "",
+      ).replace(/[^0-9]/g, "");
+      return xName === lowName && xPhone.includes(cleanPhone);
     });
     if (exactMatch) return exactMatch;
   }
@@ -258,7 +264,7 @@ const buildTrackingQrUrl = (invoiceNo) => {
 
 const buildQrUrl = (url, size = 160) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(
-    url
+    url,
   )}`;
 
 /* ---------- Read logged-in user from localStorage (for branch.id fallback) ---------- */
@@ -283,7 +289,7 @@ const computePieces = (sh, boxRows, items) => {
   const topLevelPieces = pick(
     sh,
     ["no_of_pieces", "pieces", "total_pieces", "no_of_boxes", "box_count"],
-    null
+    null,
   );
   if (topLevelPieces !== null && Number(topLevelPieces) > 0) {
     return Number(topLevelPieces);
@@ -295,7 +301,10 @@ const computePieces = (sh, boxRows, items) => {
   }
 
   // 3. Fallback to summing item quantities
-  const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const totalQty = items.reduce(
+    (sum, item) => sum + (Number(item.qty) || 0),
+    0,
+  );
   if (totalQty > 0) return totalQty;
 
   return "—";
@@ -312,9 +321,9 @@ const pickShipmentDate = (sh) => {
     sh?.date,
   ].filter(Boolean);
   const raw = candidates[0];
-  const d = raw ? new Date(raw) : new Date(); 
+  const d = raw ? new Date(raw) : new Date();
   if (isNaN(d.getTime())) return String(raw);
-  return d.toLocaleDateString("en-GB"); 
+  return d.toLocaleDateString("en-GB");
 };
 
 /* ---------------- Component ---------------- */
@@ -329,7 +338,7 @@ export default function InvoiceView({
     location.state?.cargo || location.state?.shipment || null;
   const [shipment, setShipment] = useState(null);
   const [loading, setLoading] = useState(
-    !!id && !injected && !hydratedFromState
+    !!id && !injected && !hydratedFromState,
   );
   const [err, setErr] = useState("");
 
@@ -337,14 +346,14 @@ export default function InvoiceView({
   const [receiverParty, setReceiverParty] = useState(null);
   const [branch, setBranch] = useState(null);
 
-  const loggedInUser = useMemo(() => getLoggedInUser(), []);
-  
+  const loggedInUser = useSelector((state) => state.auth.user);
+
   // Calculate billNo for use in URL
   const billNo = useMemo(
     () => shipment?.booking_no ?? shipment?.invoice_no ?? "—",
-    [shipment]
+    [shipment],
   );
-  
+
   // Construct the new QR URL
   const qrTargetUrl = buildTrackingQrUrl(billNo);
 
@@ -380,37 +389,41 @@ export default function InvoiceView({
   }, [id, injected, hydratedFromState]);
 
   /* ------------- Fetch branch ------------- */
- useEffect(() => {
-  if (!shipment) return;
+  useEffect(() => {
+    if (!shipment && !loggedInUser) return;
 
-  const shipmentBranchId =
-    shipment?.branch_id ??
-    shipment?.branch?.id ??
-    shipment?.origin_branch_id;
+    const targetBranchId =
+      shipment?.branch_id ??
+      shipment?.branch?.id ??
+      shipment?.origin_branch_id ??
+      loggedInUser?.branch_id ??
+      loggedInUser?.branch?.id;
 
-  if (!shipmentBranchId) {
-    console.warn("Invoice: shipment has no branch_id");
-    setBranch(null);
-    return;
-  }
-
-  if (branch && String(branch.id) === String(shipmentBranchId)) return;
-
-  let alive = true;
-  (async () => {
-    try {
-      const b = await getBranchByIdSmart(shipmentBranchId);
-      if (alive) setBranch(b);
-    } catch (e) {
-      if (alive) setBranch(null);
+    if (!targetBranchId) {
+      console.warn(
+        "InvoiceView: No branch ID found in shipment or user profile",
+      ); //
+      return;
     }
-  })();
 
-  return () => {
-    alive = false;
-  };
-}, [shipment]);
+    if (branch && String(branch.id) === String(targetBranchId)) return;
 
+    let alive = true;
+    (async () => {
+      try {
+        const b = await getBranchByIdSmart(targetBranchId); //
+        if (alive && b) {
+          setBranch(b);
+        }
+      } catch (e) {
+        if (alive) setBranch(null); //
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [shipment, loggedInUser]);
 
   // fetch Sender/Receiver party once we have shipment basics
   useEffect(() => {
@@ -421,11 +434,11 @@ export default function InvoiceView({
 
       // 1. TRUST THE SHIPMENT OBJECT FIRST if it's already fully populated
       const directObj = isSender ? shipment.sender : shipment.receiver;
-      if (directObj && typeof directObj === 'object' && directObj.id) {
-          const expectedId = isSender ? shipment.sender_id : shipment.receiver_id;
-          if (!expectedId || String(directObj.id) === String(expectedId)) {
-             return extractParty(directObj);
-          }
+      if (directObj && typeof directObj === "object" && directObj.id) {
+        const expectedId = isSender ? shipment.sender_id : shipment.receiver_id;
+        if (!expectedId || String(directObj.id) === String(expectedId)) {
+          return extractParty(directObj);
+        }
       }
 
       const idCandidates = isSender
@@ -462,8 +475,10 @@ export default function InvoiceView({
       // FIX #2: Removed `allParties` dependency. Only fetch specific name from server.
       if (name) {
         // Fetch only relevant parties from server
-        const list = parsePartyList(await getParties({ search: name }).catch(() => []));
-        
+        const list = parsePartyList(
+          await getParties({ search: name }).catch(() => []),
+        );
+
         const roleFiltered = list.filter((p) => {
           const typeId = Number(p.customer_type_id);
           const typeName = String(p.customer_type || "").toLowerCase();
@@ -474,11 +489,19 @@ export default function InvoiceView({
 
         // Determine specific phone from shipment
         const specificPhone = isSender
-         ? pick(shipment, ["sender_phone", "shipper_phone", "sender_mobile"], "")
-         : pick(shipment, ["receiver_phone", "consignee_phone", "receiver_mobile"], "");
+          ? pick(
+              shipment,
+              ["sender_phone", "shipper_phone", "sender_mobile"],
+              "",
+            )
+          : pick(
+              shipment,
+              ["receiver_phone", "consignee_phone", "receiver_mobile"],
+              "",
+            );
 
         const chosen =
-          matchByNameAndPhone(name, specificPhone, roleFiltered) || 
+          matchByNameAndPhone(name, specificPhone, roleFiltered) ||
           matchByNameAndPhone(name, specificPhone, list) ||
           roleFiltered[0] ||
           list[0] ||
@@ -492,12 +515,12 @@ export default function InvoiceView({
         ? pick(
             shipment,
             ["sender_address", "shipper_address", "sender_addr"],
-            ""
+            "",
           )
         : pick(
             shipment,
             ["receiver_address", "consignee_address", "receiver_addr"],
-            ""
+            "",
           );
 
       const phone = isSender
@@ -505,7 +528,7 @@ export default function InvoiceView({
         : pick(
             shipment,
             ["receiver_phone", "consignee_phone", "receiver_mobile"],
-            ""
+            "",
           );
 
       const email = isSender
@@ -516,20 +539,20 @@ export default function InvoiceView({
         ? pick(
             shipment,
             ["sender_document_id", "shipper_document_id", "document_id"],
-            ""
+            "",
           )
         : pick(
             shipment,
             ["receiver_document_id", "consignee_document_id", "document_id"],
-            ""
+            "",
           );
 
       return extractParty({
         id: null,
         name: name || "—",
         email,
-        contact_number: phone, 
-        address, 
+        contact_number: phone,
+        address,
         city: "",
         postal_code: "",
         district: "",
@@ -574,12 +597,12 @@ export default function InvoiceView({
     const keys = Object.keys(boxes).sort((a, b) => Number(a) - Number(b));
     const labelByKey = Object.fromEntries(keys.map((k, i) => [k, `B${i + 1}`]));
 
-    const topWeights = parseBoxWeights(shipment?.box_weight); 
+    const topWeights = parseBoxWeights(shipment?.box_weight);
     const rowCount = Math.max(keys.length, topWeights.length, 0);
 
     const rows = [];
     for (let i = 0; i < rowCount; i++) {
-      const k = keys[i]; 
+      const k = keys[i];
       const box = k ? boxes[k] || {} : {};
       const items = Array.isArray(box?.items) ? box.items : [];
 
@@ -592,8 +615,8 @@ export default function InvoiceView({
         0;
 
       rows.push({
-        sl: i + 1, 
-        boxNo: labelByKey[k] ?? `B${i + 1}`, 
+        sl: i + 1,
+        boxNo: labelByKey[k] ?? `B${i + 1}`,
         weight: toFixed3(weightCandidate),
       });
     }
@@ -604,10 +627,24 @@ export default function InvoiceView({
   const items = useMemo(() => {
     // Robust weight picker - prioritize direct property
     const getW = (it) => {
-        if (it?.weight !== undefined && it?.weight !== null && String(it.weight).trim() !== "") {
-            return it.weight;
-        }
-        return pick(it, ["weight_kg", "unit_weight", "item_weight", "total_weight", "gross_weight"], "");
+      if (
+        it?.weight !== undefined &&
+        it?.weight !== null &&
+        String(it.weight).trim() !== ""
+      ) {
+        return it.weight;
+      }
+      return pick(
+        it,
+        [
+          "weight_kg",
+          "unit_weight",
+          "item_weight",
+          "total_weight",
+          "gross_weight",
+        ],
+        "",
+      );
     };
 
     const hasBoxes =
@@ -616,7 +653,7 @@ export default function InvoiceView({
       const bx = coerceBoxes(shipment.boxes);
       const keys = Object.keys(bx).sort((a, b) => Number(a) - Number(b));
       const labelByKey = Object.fromEntries(
-        keys.map((k, i) => [k, `B${i + 1}`])
+        keys.map((k, i) => [k, `B${i + 1}`]),
       );
       const out = [];
       let runningIndex = 1;
@@ -658,7 +695,7 @@ export default function InvoiceView({
         name: pick(
           it,
           ["description", "name", "item_name", "cargo_name", "title", "item"],
-          "Item"
+          "Item",
         ),
         qty,
         weight: getW(it),
@@ -683,22 +720,26 @@ export default function InvoiceView({
       side === "sender"
         ? ["sender_address", "shipper_address", "sender_addr"]
         : ["receiver_address", "consignee_address", "receiver_addr"],
-      ""
+      "",
     );
 
   const getPhone = (p, side, sh, pickFn) =>
     p?.phones ||
     pickFn?.(sh?.[side], ["contact_number", "whatsapp_number"], "") ||
-    [ 
-      pickFn?.(sh, side === "sender" 
-          ? ["sender_phone", "shipper_phone", "sender_mobile"] 
-          : ["receiver_phone", "consignee_phone", "receiver_mobile"], ""),
+    [
+      pickFn?.(
+        sh,
+        side === "sender"
+          ? ["sender_phone", "shipper_phone", "sender_mobile"]
+          : ["receiver_phone", "consignee_phone", "receiver_mobile"],
+        "",
+      ),
       pickFn?.(
         sh,
         side === "sender"
           ? ["sender_whatsapp_number"]
           : ["receiver_whatsapp_number"],
-        ""
+        "",
       ),
     ]
       .filter(Boolean)
@@ -716,25 +757,25 @@ export default function InvoiceView({
     pickNum(shipment, [
       "amount_total_weight",
       "charges.amount_total_weight",
-      "total_cost", 
-      "subtotal", 
-      "summary.subtotal", 
-    ])
+      "total_cost",
+      "subtotal",
+      "summary.subtotal",
+    ]),
   );
 
   const bill = num(
-    pickNum(shipment, ["bill_charges", "summary.bill_charges", "charges.bill"])
+    pickNum(shipment, ["bill_charges", "summary.bill_charges", "charges.bill"]),
   );
   const tax = num(
-    pickNum(shipment, ["vat_cost", "vat_amount", "summary.vat_cost"])
+    pickNum(shipment, ["vat_cost", "vat_amount", "summary.vat_cost"]),
   );
   const total = num(
     pickNum(shipment, [
-      "total_amount", 
-      "net_total", 
-      "grand_total", 
+      "total_amount",
+      "net_total",
+      "grand_total",
       "summary.total",
-    ])
+    ]),
   );
 
   if (loading)
@@ -744,7 +785,7 @@ export default function InvoiceView({
     return <div className="p-6 text-rose-700">No cargo found.</div>;
 
   const totalWeightDisplay = toFixed3(
-    pick(shipment, ["total_weight", "weight", "gross_weight"], 0)
+    pick(shipment, ["total_weight", "weight", "gross_weight"], 0),
   );
 
   return (
@@ -778,28 +819,27 @@ export default function InvoiceView({
 }
       `}</style>
 
-     {!modal && (
-  <div className="sticky top-0 z-10 border-b bg-white print:hidden">
-    <div className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-2">
-      <button
-        onClick={() => window.history.back()}
-        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-      >
-        ← Back
-      </button>
+      {!modal && (
+        <div className="sticky top-0 z-10 border-b bg-white print:hidden">
+          <div className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-2">
+            <button
+              onClick={() => window.history.back()}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+            >
+              ← Back
+            </button>
 
-      <div className="ml-auto flex items-center gap-2">
-        <button
-          onClick={() => generateInvoicePDF(shipment)}
-          className="rounded-lg bg-black px-4 py-1.5 text-sm font-semibold text-white hover:bg-gray-800"
-        >
-          Download PDF
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => generateInvoicePDF(shipment)}
+                className="rounded-lg bg-black px-4 py-1.5 text-sm font-semibold text-white hover:bg-gray-800"
+              >
+                Download PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="flex justify-center items-center mx-auto max-w-5xl p-4 invoice-main-section">
         <div
@@ -822,40 +862,28 @@ export default function InvoiceView({
               </div>
 
               {/* MIDDLE: QR */}
-   <div className="invoice-qrcode flex flex-col items-center justify-center">
-  <img
-    src={buildQrUrl(qrTargetUrl, 120)}
-    alt="Invoice QR"
-    className="h-28 w-28 rounded bg-white p-1 ring-1 ring-slate-200"
-  />
-
-</div>
-
+              <div className="invoice-qrcode flex flex-col items-center justify-center">
+                <img
+                  src={buildQrUrl(qrTargetUrl, 120)}
+                  alt="Invoice QR"
+                  className="h-28 w-28 rounded bg-white p-1 ring-1 ring-slate-200"
+                />
+              </div>
 
               {/* RIGHT: Arabic name + Phone + Email */}
               <div className="text-center sm:text-right">
                 <div className="text-[11px] font-semibold leading-tight text-indigo-900">
                   <div className="header-invoice-branch-name mt-1 text-slate-700">
-                    {branch?.branch_name ||
-                      pick(
-                        shipment,
-                        [
-                          "branch",
-                          "branch_name",
-                          "branch_label",
-                          "branch.name",
-                          "origin_branch_name",
-                          "origin_branch",
-                        ],
-                        "—"
-                      )}
+                    {/* Prioritize the fetched branch object name */}
+                    {branch?.branch_name || shipment?.branch_name || "—"}
                   </div>
                 </div>
                 <div className="header-invoice-branch-arname">
-                  {s(branch?.branch_name_ar, "NILL")}
+                  {/* Changed fallback from "NILL" to "—" or actual branch data */}
+                  {s(branch?.branch_name_ar, branch?.name_ar || "—")}
                 </div>
                 <p className="header-invoice-branch-contact mt-1 font-medium text-slate-800">
-                  {pickPhoneFromBranch(branch)}
+                  {pickPhoneFromBranch(branch)} {/* */}
                 </p>
               </div>
             </div>
@@ -870,10 +898,9 @@ export default function InvoiceView({
                   {pick(
                     shipment,
                     ["shipping_method", "method"],
-                    COMPANY.defaultShipmentType
+                    COMPANY.defaultShipmentType,
                   )}
                 </div>
-               
               </div>
               <div className="text-center">
                 <div className="invoice-top-header">فاتورة ضريبة مبسطة</div>
@@ -892,8 +919,8 @@ export default function InvoiceView({
             </div>
           </div>
 
-         <div
-  className="
+          <div
+            className="
     section-three-bg
     grid gap-6 border-slate-200 px-1 py-2
     grid-cols-1
@@ -901,7 +928,7 @@ export default function InvoiceView({
     print:grid-cols-[1fr_2fr_1fr]
     font-bold text-black
   "
->
+          >
             {/* SHIPPER */}
             <div className="flex flex-col rounded-sm bg-white">
               <div className="bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
@@ -910,7 +937,9 @@ export default function InvoiceView({
 
               <div className="flex-1 pt-2 text-[9px] leading-tight space-y-1">
                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">Name</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Name
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="font-semibold text-slate-900 break-words flex-1">
                     {getName(senderParty, "sender", shipment) || "—"}
@@ -918,16 +947,24 @@ export default function InvoiceView({
                 </div>
 
                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">ID No</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    ID No
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1">
                     {senderParty?.document_id ||
-                      pick(shipment, ["sender_document_id", "shipper_document_id"], "—")}
+                      pick(
+                        shipment,
+                        ["sender_document_id", "shipper_document_id"],
+                        "—",
+                      )}
                   </div>
                 </div>
 
                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">Tel</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Tel
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1">
                     {getPhone(senderParty, "sender", shipment, pick) || "—"}
@@ -935,7 +972,9 @@ export default function InvoiceView({
                 </div>
 
                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">No. of Pcs</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    No. of Pcs
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1">
                     {computePieces(shipment, boxRows, items)}
@@ -943,29 +982,38 @@ export default function InvoiceView({
                 </div>
 
                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">Weight</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Weight
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1">
                     {totalWeightDisplay} kg
                   </div>
                 </div>
 
-                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">Date</div>
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Date
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1">
                     {pickShipmentDate(shipment) || "—"}
                   </div>
                 </div>
 
-                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">PAYMENT:{" "}</div>
+                <div className="flex items-baseline">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    PAYMENT:{" "}
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1">
-                    {pick(shipment, ["payment_type", "payment_method", "payment_mode"], "—")}
-                  </div>                
+                    {pick(
+                      shipment,
+                      ["payment_type", "payment_method", "payment_mode"],
+                      "—",
+                    )}
+                  </div>
                 </div>
-
               </div>
             </div>
 
@@ -977,7 +1025,9 @@ export default function InvoiceView({
 
               <div className="flex-1 pt-2 text-[9px] leading-tight space-y-1">
                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">Name</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Name
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="font-semibold text-slate-900 break-words flex-1">
                     {getName(receiverParty, "receiver", shipment) || "—"}
@@ -985,7 +1035,9 @@ export default function InvoiceView({
                 </div>
 
                 <div className="flex items-baseline">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">Address</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Address
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1 whitespace-pre-wrap">
                     {receiverParty?.address_line ||
@@ -994,56 +1046,77 @@ export default function InvoiceView({
                   </div>
                 </div>
 
-                 {/* Post + PIN */}
+                {/* Post + PIN */}
                 <div className="flex items-baseline">
-                   <div className="w-14 shrink-0 text-slate-600 font-medium">Post</div>
-                   <div className="mr-1">:</div>
-                   <div className="flex flex-wrap items-baseline gap-2 flex-1">
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Post
+                  </div>
+                  <div className="mr-1">:</div>
+                  <div className="flex flex-wrap items-baseline gap-2 flex-1">
                     <span>
-                      {receiverParty?.post || pick(receiverParty?.raw || {}, ["post"], "—")}
+                      {receiverParty?.post ||
+                        pick(receiverParty?.raw || {}, ["post"], "—")}
                     </span>
                     <span className="text-slate-500 text-[8px]">PIN:</span>
                     <span>
                       {receiverParty?.pin ||
-                        pick(receiverParty?.raw || {}, ["postal_code", "pincode", "zip"], "—")}
+                        pick(
+                          receiverParty?.raw || {},
+                          ["postal_code", "pincode", "zip"],
+                          "—",
+                        )}
                     </span>
-                   </div>
+                  </div>
                 </div>
 
                 {/* Country/State/Dist/City grid */}
                 <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 pt-1">
-                   <div className="flex items-baseline">
-                     <span className="w-10 shrink-0 text-slate-600 font-medium">Country</span>
-                     <span className="mr-1">:</span>
-                     <span className="truncate">
-                        {receiverParty?.country || pick(receiverParty?.raw || {}, ["country"], "—")}
-                     </span>
-                   </div>
-                    <div className="flex items-baseline">
-                     <span className="w-8 shrink-0 text-slate-600 font-medium">State</span>
-                     <span className="mr-1">:</span>
-                     <span className="truncate">
-                        {receiverParty?.state || pick(receiverParty?.raw || {}, ["state"], "—")}
-                     </span>
-                   </div>
-                   <div className="flex items-baseline">
-                     <span className="w-10 shrink-0 text-slate-600 font-medium">Dist</span>
-                     <span className="mr-1">:</span>
-                     <span className="truncate">
-                        {receiverParty?.dist || pick(receiverParty?.raw || {}, ["district"], "—")}
-                     </span>
-                   </div>
-                   <div className="flex items-baseline">
-                     <span className="w-8 shrink-0 text-slate-600 font-medium">City</span>
-                     <span className="mr-1">:</span>
-                     <span className="truncate">
-                        {receiverParty?.city || pick(receiverParty?.raw || {}, ["city"], "—")}
-                     </span>
-                   </div>
+                  <div className="flex items-baseline">
+                    <span className="w-10 shrink-0 text-slate-600 font-medium">
+                      Country
+                    </span>
+                    <span className="mr-1">:</span>
+                    <span className="truncate">
+                      {receiverParty?.country ||
+                        pick(receiverParty?.raw || {}, ["country"], "—")}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline">
+                    <span className="w-8 shrink-0 text-slate-600 font-medium">
+                      State
+                    </span>
+                    <span className="mr-1">:</span>
+                    <span className="truncate">
+                      {receiverParty?.state ||
+                        pick(receiverParty?.raw || {}, ["state"], "—")}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline">
+                    <span className="w-10 shrink-0 text-slate-600 font-medium">
+                      Dist
+                    </span>
+                    <span className="mr-1">:</span>
+                    <span className="truncate">
+                      {receiverParty?.dist ||
+                        pick(receiverParty?.raw || {}, ["district"], "—")}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline">
+                    <span className="w-8 shrink-0 text-slate-600 font-medium">
+                      City
+                    </span>
+                    <span className="mr-1">:</span>
+                    <span className="truncate">
+                      {receiverParty?.city ||
+                        pick(receiverParty?.raw || {}, ["city"], "—")}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-baseline pt-1">
-                  <div className="w-14 shrink-0 text-slate-600 font-medium">Tel</div>
+                  <div className="w-14 shrink-0 text-slate-600 font-medium">
+                    Tel
+                  </div>
                   <div className="mr-1">:</div>
                   <div className="break-words flex-1">
                     {getPhone(receiverParty, "receiver", shipment, pick) || "—"}
@@ -1054,33 +1127,43 @@ export default function InvoiceView({
 
             {/* BOX SUMMARY */}
             <div className="flex flex-col">
-               <div className="w-full overflow-hidden border border-slate-300 rounded-sm">
+              <div className="w-full overflow-hidden border border-slate-300 rounded-sm">
                 <table className="w-full text-[9px] border-collapse">
                   <thead>
                     <tr className="bg-slate-100 text-center border-b border-slate-300">
-                      <th className="border-r border-slate-300 px-1 py-0.5 font-semibold text-slate-700">Box No.</th>
-                      <th className="border-r border-slate-300 px-1 py-0.5 font-semibold text-slate-700">INV No.</th>
-                      <th className="px-1 py-0.5 font-semibold text-slate-700">Weight</th>
+                      <th className="border-r border-slate-300 px-1 py-0.5 font-semibold text-slate-700">
+                        Box No.
+                      </th>
+                      <th className="border-r border-slate-300 px-1 py-0.5 font-semibold text-slate-700">
+                        INV No.
+                      </th>
+                      <th className="px-1 py-0.5 font-semibold text-slate-700">
+                        Weight
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {boxRows.length > 0 ? (
                       boxRows.map((row, idx) => (
-                        <tr key={idx} className="text-center border-b border-slate-200 last:border-0">
+                        <tr
+                          key={idx}
+                          className="text-center border-b border-slate-200 last:border-0"
+                        >
                           <td className="border-r border-slate-200 px-1 py-0.5">
                             {row.boxNo}
                           </td>
                           <td className="border-r border-slate-200 px-1 py-0.5">
                             {billNo}
                           </td>
-                          <td className="px-1 py-0.5">
-                            {row.weight}
-                          </td>
+                          <td className="px-1 py-0.5">{row.weight}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td className="px-2 py-2 text-center text-slate-400 italic" colSpan={3}>
+                        <td
+                          className="px-2 py-2 text-center text-slate-400 italic"
+                          colSpan={3}
+                        >
                           No box weights
                         </td>
                       </tr>
@@ -1092,30 +1175,33 @@ export default function InvoiceView({
           </div>
 
           <section className="px-1 py-1 avoid-break">
-  <div className="flex justify-between items-center my-1">
-    <div className="invoice-cargo-heading">Cargo Items</div>
-    <div className="invoice-weight-text">
-      Total Weight: {totalWeightDisplay} kg
-    </div>
-  </div>
+            <div className="flex justify-between items-center my-1">
+              <div className="invoice-cargo-heading">Cargo Items</div>
+              <div className="invoice-weight-text">
+                Total Weight: {totalWeightDisplay} kg
+              </div>
+            </div>
 
-  {(() => {
-    // ----------------- CHANGED: STRUCTURED ITEMS WITH BOX HEADERS -----------------
-    const structuredRows = [];
-    let currentBox = null;
+            {(() => {
+              // ----------------- CHANGED: STRUCTURED ITEMS WITH BOX HEADERS -----------------
+              const structuredRows = [];
+              let currentBox = null;
 
-    items.forEach((item) => {
-       const itemBox = item.boxLabel || "Unboxed";
-       // If box changes, add a header row first
-       if(itemBox !== currentBox) {
-         currentBox = itemBox;
-         structuredRows.push({ isHeader: true, title: `Box ${currentBox.replace('B','')}` });
-       }
-       // Add the actual item
-       structuredRows.push(item);
-    });
+              items.forEach((item) => {
+                const itemBox = item.boxLabel || "Unboxed";
+                // If box changes, add a header row first
+                if (itemBox !== currentBox) {
+                  currentBox = itemBox;
+                  structuredRows.push({
+                    isHeader: true,
+                    title: `Box ${currentBox.replace("B", "")}`,
+                  });
+                }
+                // Add the actual item
+                structuredRows.push(item);
+              });
 
-   // --- CHANGED LOGIC START: Slice based on ITEM COUNT only ---
+              // --- CHANGED LOGIC START: Slice based on ITEM COUNT only ---
               const LEFT_ROWS_LIMIT = 25;
               const RIGHT_ROWS_LIMIT = 20;
 
@@ -1130,21 +1216,27 @@ export default function InvoiceView({
                   currentList.push(row);
                 } else {
                   // This is an item
-                  if (currentList === leftRows && currentItemCount >= LEFT_ROWS_LIMIT) {
+                  if (
+                    currentList === leftRows &&
+                    currentItemCount >= LEFT_ROWS_LIMIT
+                  ) {
                     // Switch to right list
                     currentList = rightRows;
                     currentItemCount = 0;
-                    
+
                     // Optional: If the last thing on the left was a header (orphaned), move it to right
                     const last = leftRows[leftRows.length - 1];
                     if (last && last.isHeader) {
-                        rightRows.push(leftRows.pop());
+                      rightRows.push(leftRows.pop());
                     }
                   }
-                  
+
                   // Stop adding if right side is full (to prevent overflow)
-                  if (currentList === rightRows && currentItemCount >= RIGHT_ROWS_LIMIT) {
-                     return;
+                  if (
+                    currentList === rightRows &&
+                    currentItemCount >= RIGHT_ROWS_LIMIT
+                  ) {
+                    return;
                   }
 
                   currentList.push(row);
@@ -1152,165 +1244,200 @@ export default function InvoiceView({
                 }
               });
 
-              const leftItemCount = leftRows.filter(r => !r.isHeader).length;
-              const rightItemCount = rightRows.filter(r => !r.isHeader).length;
+              const leftItemCount = leftRows.filter((r) => !r.isHeader).length;
+              const rightItemCount = rightRows.filter(
+                (r) => !r.isHeader,
+              ).length;
 
-              const leftFillers = Array.from({ length: Math.max(0, LEFT_ROWS_LIMIT - leftItemCount) });
-              const rightFillers = Array.from({ length: Math.max(0, RIGHT_ROWS_LIMIT - rightItemCount) });
+              const leftFillers = Array.from({
+                length: Math.max(0, LEFT_ROWS_LIMIT - leftItemCount),
+              });
+              const rightFillers = Array.from({
+                length: Math.max(0, RIGHT_ROWS_LIMIT - rightItemCount),
+              });
               // --- CHANGED LOGIC END ---
 
-    const renderRow = (row, idx, prefix) => {
-        if(row.isHeader) {
-            return (
-                <tr key={`${prefix}-HEAD-${idx}`} className="bg-slate-100">
-                    <td colSpan={4} className="border border-slate-800 px-2 font-bold text-slate-800">
+              const renderRow = (row, idx, prefix) => {
+                if (row.isHeader) {
+                  return (
+                    <tr key={`${prefix}-HEAD-${idx}`} className="bg-slate-100">
+                      <td
+                        colSpan={4}
+                        className="border border-slate-800 px-2 font-bold text-slate-800"
+                      >
                         {row.title}
+                      </td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={`${prefix}-${idx}`}>
+                    <td className="border border-slate-800 text-center">
+                      {row.idx}
                     </td>
-                </tr>
-            );
-        }
-        return (
-            <tr key={`${prefix}-${idx}`}>
-                <td className="border border-slate-800 text-center">{row.idx}</td>
-                <td className="border border-slate-800 uppercase pl-2">{row.name}</td>
-                <td className="border border-slate-800 text-center">{row.qty}</td>
-                <td className="border border-slate-800 text-center">{row.weight}</td>
-            </tr>
-        );
-    };
+                    <td className="border border-slate-800 uppercase pl-2">
+                      {row.name}
+                    </td>
+                    <td className="border border-slate-800 text-center">
+                      {row.qty}
+                    </td>
+                    <td className="border border-slate-800 text-center">
+                      {row.weight}
+                    </td>
+                  </tr>
+                );
+              };
 
-    return (
-      <div className="grid grid-cols-2 gap-3">
+              return (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* ---------------- LEFT TABLE ---------------- */}
+                  <table className="items-table w-full table-fixed border-collapse text-[10px] print-avoid">
+                    <colgroup>
+                      <col style={{ width: "30px" }} />
+                      <col />
+                      <col style={{ width: "40px" }} />
+                      <col style={{ width: "50px" }} />
+                    </colgroup>
 
-        {/* ---------------- LEFT TABLE ---------------- */}
-        <table className="items-table w-full table-fixed border-collapse text-[10px] print-avoid">
-          <colgroup>
-            <col style={{ width: "30px" }} />
-            <col />
-            <col style={{ width: "40px" }} />
-            <col style={{ width: "50px" }} />
-          </colgroup>
+                    <thead>
+                      <tr className="text-center">
+                        <th className="border border-slate-800">SL</th>
+                        <th className="border border-slate-800 text-left pl-2">
+                          ITEMS
+                        </th>
+                        <th className="border border-slate-800">QTY</th>
+                        <th className="border border-slate-800">WEIGHT</th>
+                      </tr>
+                    </thead>
 
-          <thead>
-            <tr className="text-center">
-              <th className="border border-slate-800">SL</th>
-              <th className="border border-slate-800 text-left pl-2">ITEMS</th>
-              <th className="border border-slate-800">QTY</th>
-              <th className="border border-slate-800">WEIGHT</th>
-            </tr>
-          </thead>
+                    <tbody>
+                      {leftRows.map((row, idx) => renderRow(row, idx, "LEFT"))}
+                      {leftFillers.map((_, i) => (
+                        <tr key={`LEFT-FILL-${i}`}>
+                          <td className="border border-slate-800">&nbsp;</td>
+                          <td className="border border-slate-800">&nbsp;</td>
+                          <td className="border border-slate-800">&nbsp;</td>
+                          <td className="border border-slate-800">&nbsp;</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
 
-          <tbody>
-            {leftRows.map((row, idx) => renderRow(row, idx, 'LEFT'))}
-            {leftFillers.map((_, i) => (
-              <tr key={`LEFT-FILL-${i}`}>
-                <td className="border border-slate-800">&nbsp;</td>
-                <td className="border border-slate-800">&nbsp;</td>
-                <td className="border border-slate-800">&nbsp;</td>
-                <td className="border border-slate-800">&nbsp;</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  {/* ---------------- RIGHT TABLE ---------------- */}
+                  <table className="items-table w-full table-fixed border-collapse text-[10px] print-avoid">
+                    <colgroup>
+                      <col style={{ width: "30px" }} />
+                      <col />
+                      <col style={{ width: "40px" }} />
+                      <col style={{ width: "50px" }} />
+                    </colgroup>
 
-        {/* ---------------- RIGHT TABLE ---------------- */}
-        <table className="items-table w-full table-fixed border-collapse text-[10px] print-avoid">
-          <colgroup>
-             <col style={{ width: "30px" }} />
-            <col />
-            <col style={{ width: "40px" }} />
-            <col style={{ width: "50px" }} />
-          </colgroup>
+                    <thead>
+                      <tr className="text-center">
+                        <th className="border border-slate-800">SL</th>
+                        <th className="border border-slate-800 text-left pl-2">
+                          ITEMS
+                        </th>
+                        <th className="border border-slate-800">QTY</th>
+                        <th className="border border-slate-800">WEIGHT</th>
+                      </tr>
+                    </thead>
 
-          <thead>
-            <tr className="text-center">
-              <th className="border border-slate-800">SL</th>
-              <th className="border border-slate-800 text-left pl-2">ITEMS</th>
-              <th className="border border-slate-800">QTY</th>
-              <th className="border border-slate-800">WEIGHT</th>
-            </tr>
-          </thead>
+                    <tbody>
+                      {rightRows.map((row, idx) =>
+                        renderRow(row, idx, "RIGHT"),
+                      )}
+                      {rightFillers.map((_, i) => (
+                        <tr key={`RIGHT-FILL-${i}`}>
+                          <td className="border border-slate-800">&nbsp;</td>
+                          <td className="border border-slate-800">&nbsp;</td>
+                          <td className="border border-slate-800">&nbsp;</td>
+                          <td className="border border-slate-800">&nbsp;</td>
+                        </tr>
+                      ))}
+                    </tbody>
 
-          <tbody>
-             {rightRows.map((row, idx) => renderRow(row, idx, 'RIGHT'))}
-            {rightFillers.map((_, i) => (
-              <tr key={`RIGHT-FILL-${i}`}>
-                <td className="border border-slate-800">&nbsp;</td>
-                <td className="border border-slate-800">&nbsp;</td>
-                <td className="border border-slate-800">&nbsp;</td>
-                <td className="border border-slate-800">&nbsp;</td>
-              </tr>
-            ))}
-          </tbody>
+                    {/* ----------- TOTALS ----------- */}
+                    <tfoot>
+                      <tr>
+                        <td
+                          className="border border-slate-800 text-right font-medium"
+                          colSpan={3}
+                        >
+                          <div className="flex justify-between px-2">
+                            <span>Total</span>
+                            <span className="ml-2 text-right">المجموع</span>
+                          </div>
+                        </td>
+                        <td className="border border-slate-800 text-right pr-1">
+                          {fmtMoney(subtotal, currency)
+                            .replace(/[A-Z]{3}\s?/, "")
+                            .trim()}
+                        </td>
+                      </tr>
 
-          {/* ----------- TOTALS ----------- */}
-          <tfoot>
-            <tr>
-              <td
-                className="border border-slate-800 text-right font-medium"
-                colSpan={3}
-              >
-                <div className="flex justify-between px-2">
-                  <span>Total</span>
-                  <span className="ml-2 text-right">المجموع</span>
+                      <tr>
+                        <td
+                          className="border border-slate-800 text-right font-medium"
+                          colSpan={3}
+                        >
+                          <div className="flex justify-between px-2">
+                            <span>Bill Charges</span>
+                            <span className="ml-2 text-right">
+                              رسوم الفاتورة
+                            </span>
+                          </div>
+                        </td>
+                        <td className="border border-slate-800 text-right pr-1">
+                          {fmtMoney(bill, currency)
+                            .replace(/[A-Z]{3}\s?/, "")
+                            .trim()}
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td
+                          className="border border-slate-800 text-right font-medium"
+                          colSpan={3}
+                        >
+                          <div className="flex justify-between px-2">
+                            <span>VAT %</span>
+                            <span className="ml-2 text-right">
+                              ضريبة القيمة المضافة %
+                            </span>
+                          </div>
+                        </td>
+                        <td className="border border-slate-800 text-right pr-1">
+                          {fmtMoney(tax, currency)
+                            .replace(/[A-Z]{3}\s?/, "")
+                            .trim()}
+                        </td>
+                      </tr>
+
+                      <tr className="font-semibold">
+                        <td
+                          className="border border-slate-800 text-right uppercase"
+                          colSpan={3}
+                        >
+                          <div className="flex justify-between px-2">
+                            <span>Net Total</span>
+                            <span className="ml-2 text-right">
+                              المجموع الصافي
+                            </span>
+                          </div>
+                        </td>
+                        <td className="border border-slate-800 text-right pr-1">
+                          {fmtMoney(total, currency)
+                            .replace(/[A-Z]{3}\s?/, "")
+                            .trim()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
-              </td>
-              <td className="border border-slate-800 text-right pr-1">
-                {fmtMoney(subtotal, currency).replace(/[A-Z]{3}\s?/, "").trim()}
-              </td>
-            </tr>
-
-            <tr>
-              <td
-                className="border border-slate-800 text-right font-medium"
-                colSpan={3}
-              >
-                <div className="flex justify-between px-2">
-                  <span>Bill Charges</span>
-                  <span className="ml-2 text-right">رسوم الفاتورة</span>
-                </div>
-              </td>
-              <td className="border border-slate-800 text-right pr-1">
-                {fmtMoney(bill, currency).replace(/[A-Z]{3}\s?/, "").trim()}
-              </td>
-            </tr>
-
-            <tr>
-              <td
-                className="border border-slate-800 text-right font-medium"
-                colSpan={3}
-              >
-                <div className="flex justify-between px-2">
-                  <span>VAT %</span>
-                  <span className="ml-2 text-right">ضريبة القيمة المضافة %</span>
-                </div>
-              </td>
-              <td className="border border-slate-800 text-right pr-1">
-                {fmtMoney(tax, currency).replace(/[A-Z]{3}\s?/, "").trim()}
-              </td>
-            </tr>
-
-            <tr className="font-semibold">
-              <td
-                className="border border-slate-800 text-right uppercase"
-                colSpan={3}
-              >
-                <div className="flex justify-between px-2">
-                  <span>Net Total</span>
-                  <span className="ml-2 text-right">المجموع الصافي</span>
-                </div>
-              </td>
-              <td className="border border-slate-800 text-right pr-1">
-                {fmtMoney(total, currency).replace(/[A-Z]{3}\s?/, "").trim()}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    );
-  })()}
-</section>
-
+              );
+            })()}
+          </section>
 
           {/* Footer */}
           <div className="border-t border-slate-200 px-1 py-2 mt-4">

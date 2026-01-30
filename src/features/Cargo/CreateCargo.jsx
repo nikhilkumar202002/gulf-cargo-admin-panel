@@ -35,7 +35,7 @@ import { getProfile } from "../../services/authService";
 import { getPartiesByCustomerType } from "../../services/partyService";
 
 import InvoiceModal from "../../features/Finance/Invoices/InvoiceModal";
-import BillModal from "./components/BillModal";
+// import BillModal from "./components/BillModal";
 import "./ShipmentStyles.css";
 import SenderModal from "../CRM/modals/SenderModal";
 import ReceiverModal from "../CRM/modals/ReceiverModal";
@@ -1328,11 +1328,11 @@ const totalItems = boxes.reduce(
         onClose={() => setInvoiceOpen(false)}
         shipment={invoiceShipment}
       />
-      <BillModal
+      {/* <BillModal
         open={billModalOpen}
         onClose={() => setBillModalOpen(false)}
         shipment={billData}
-      />
+      /> */}
     </>
   );
 }

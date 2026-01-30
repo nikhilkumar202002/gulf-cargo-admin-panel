@@ -1,6 +1,7 @@
 // src/pages/InvoiceView.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
+import { useSelector } from "react-redux"; // Added Redux selector
 import { normalizeCargoToInvoice, getCargoById } from "../../../services/cargoService";
 import { getPartyById, getParties } from "../../../services/partyService";
 import { getBranchByIdSmart } from "../../../services/coreService";
@@ -325,19 +326,16 @@ export default function InvoiceView({
   const { id } = useParams();
   const location = useLocation();
 
-  const hydratedFromState =
-    location.state?.cargo || location.state?.shipment || null;
+  const hydratedFromState = location.state?.cargo || location.state?.shipment || null;
   const [shipment, setShipment] = useState(null);
-  const [loading, setLoading] = useState(
-    !!id && !injected && !hydratedFromState
-  );
+  const [loading, setLoading] = useState(!!id && !injected && !hydratedFromState);
   const [err, setErr] = useState("");
 
   const [senderParty, setSenderParty] = useState(null);
   const [receiverParty, setReceiverParty] = useState(null);
   const [branch, setBranch] = useState(null);
 
-  const loggedInUser = useMemo(() => getLoggedInUser(), []);
+  const loggedInUser = useSelector((state) => state.auth.user);
   
   // Calculate billNo for use in URL
   const billNo = useMemo(
@@ -385,11 +383,11 @@ export default function InvoiceView({
     // Determine the target branch ID:
     // 1. Shipment's branch (Highest priority)
     // 2. Logged-in user's branch (Fallback)
-    const shipmentBranchId = shipment?.branch_id ?? shipment?.branch?.id ?? shipment?.origin_branch_id;
+   const shipmentBranchId = shipment?.branch_id ?? shipment?.branch?.id ?? shipment?.origin_branch_id;
     const userBranchId = loggedInUser?.branch_id ?? loggedInUser?.branch?.id;
     
     // Convert to strings for safe comparison
-    const finalId = shipmentBranchId ? String(shipmentBranchId) : (userBranchId ? String(userBranchId) : null);
+   const finalId = shipmentBranchId ? String(shipmentBranchId) : (userBranchId ? String(userBranchId) : null);
 
     if (!finalId) return;
 
@@ -836,24 +834,13 @@ export default function InvoiceView({
               {/* RIGHT: Arabic name + Phone + Email */}
               <div className="text-center sm:text-right">
                 <div className="text-[11px] font-semibold leading-tight text-indigo-900">
-                  <div className="header-invoice-branch-name mt-1 text-slate-700">
-                    {branch?.branch_name ||
-                      pick(
-                        shipment,
-                        [
-                          "branch",
-                          "branch_name",
-                          "branch_label",
-                          "branch.name",
-                          "origin_branch_name",
-                          "origin_branch",
-                        ],
-                        "—"
-                      )}
+                 <div className="header-invoice-branch-name mt-1 text-slate-700">
+                    {/* Display loaded branch name or fallback to shipment data */}
+                    {branch?.branch_name || shipment?.branch_name || "—"}
                   </div>
                 </div>
-                <div className="header-invoice-branch-arname">
-                  {s(branch?.branch_name_ar, "NILL")}
+               <div className="header-invoice-branch-arname">
+                  {s(branch?.branch_name_ar, "—")}
                 </div>
                 <p className="header-invoice-branch-contact mt-1 font-medium text-slate-800">
                   {pickPhoneFromBranch(branch)}
