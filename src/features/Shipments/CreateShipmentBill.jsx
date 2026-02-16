@@ -40,8 +40,16 @@ const unwrapArray = (o) =>
           Array.isArray(o?.results) ? o.results : [];
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+const normalizeStatusId = (val) => {
+  if (!val) return null;
+  if (typeof val === "object" && val.id != null) return Number(val.id);
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
+};
+
 const onlyFree = (rows = []) =>
-  rows.filter((r) => Number(r?.is_shipment ?? r?.is_in_cargo_shipment ?? 0) === 0);
+  rows.filter((r) => Number(r?.is_shipment ?? r?.is_in_cargo_shipment ?? r?.is_assigned ?? 0) === 0 && normalizeStatusId(r?.status) === 13);
 
 const statusPill = (s) => {
   const v = String(s || "").toLowerCase();
@@ -224,13 +232,6 @@ function extractBranchInfo(profile, branches = []) {
 }
 
 /* ---------- status helpers ---------- */
-const normalizeStatusId = (val) => {
-  if (!val) return null;
-  if (typeof val === "object" && val.id != null) return Number(val.id);
-  const n = Number(val);
-  return Number.isFinite(n) ? n : null;
-};
-
 // SAFE: statusById is optional and guarded
 const getStatusText = (row, statusById = new Map()) => {
   if (row?.status?.name) return String(row.status.name);
@@ -499,11 +500,11 @@ export default function CreateShipmentBill() {
           getPhysicalBills({ search: queryText }, true),  // ?is_shipment=1
         ]);
 
-        // Free rows for the TABLE (Applied Broader Filter)
+        // Strictly filter for FREE rows only for the TABLE
         tableRows = onlyFree(unwrapArray(freeResp)).filter(matchesQuery);
         
         // Used rows for the NOTE
-        usedRows = unwrapArray(usedResp).filter(matchesQuery);
+        usedRows = unwrapArray(usedResp).filter(r => !onlyFree([r]).length && matchesQuery(r));
 
         // Fallbacks if backend ignored 'search'
         if (tableRows.length === 0 && unwrapArray(freeResp).length === 0) {
@@ -1335,13 +1336,13 @@ export default function CreateShipmentBill() {
 
                       {visibleResults.map((row, idx) => {
                         const checked = pickSelectedIds.includes(Number(row.id));
-                        const isUsed = Number(row?.is_shipment ?? row?.is_in_cargo_shipment ?? 0) === 1;
+                        const isUsed = Number(row?.is_shipment ?? row?.is_in_cargo_shipment ?? row?.is_assigned ?? 0) === 1;
                         const statusStr = getStatusText(row, statusMaps.byId);
 
                         return (
                           <tr 
                             key={row.id} 
-                            onClick={() => !isUsed && toggleOnePicker(row)}
+                            onClick={() => toggleOnePicker(row)}
                             className={`transition-colors cursor-pointer ${isUsed ? 'bg-gray-50 opacity-60 cursor-not-allowed' : checked ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}
                           >
                             <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
