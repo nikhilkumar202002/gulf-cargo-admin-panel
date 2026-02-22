@@ -104,27 +104,25 @@ function CreateBills() {
 
       const { data } = await createPhysicalBill(payload);
 
-      if (data?.success) {
-        // success toast with details from server
-        toast.success(
-          data?.message
-            ? `${data.message} (Invoice: ${data?.data?.invoice_no ?? form.bill_no})`
-            : `Shipment created. Invoice: ${data?.data?.invoice_no ?? form.bill_no}`
-        );
+      // Log the response for debugging (remove in production)
+      console.log("API Response:", data);
 
-        // Reset form (keep fixed status)
-        setForm({
-          bill_no: "",
-          pcs: "",
-          weight: "",
-          shipment_method: "",
-          destination: "",
-          status: FIXED_STATUS,
-        });
-      } else {
-        // Generic failure path if success flag missing/false
-        toast.error(data?.message || "Failed to create shipment.");
-      }
+      // Assume success if the API call doesn't throw (bill is created)
+      toast.success(
+        data?.message
+          ? `${data.message} (Invoice: ${data?.data?.invoice_no ?? form.bill_no})`
+          : `Shipment created. Invoice: ${data?.data?.invoice_no ?? form.bill_no}`
+      );
+
+      // Reset form (keep fixed status)
+      setForm({
+        bill_no: "",
+        pcs: "",
+        weight: "",
+        shipment_method: "",
+        destination: "",
+        status: FIXED_STATUS,
+      });
     } catch (err) {
       // Try to surface backend validation errors if present
       const msg =
