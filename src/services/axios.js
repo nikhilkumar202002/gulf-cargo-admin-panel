@@ -2,7 +2,7 @@ import axios from "axios";
 import { getToken, clearToken } from "../auth/tokenStore";
 
 // 1. Base URL Configuration
-const baseURL = import.meta.env.VITE_API_BASE_URL || "https://api.gulfcargoksa.com/public/api";
+const baseURL = import.meta.env.VITE_API_BASE_URL || "https://developmentapi.gulfcargoksa.com/public/api";
 
 // 2. Create Axios Instance
 const api = axios.create({

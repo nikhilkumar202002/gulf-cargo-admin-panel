@@ -160,14 +160,19 @@ function ManualErrorModal({ open, title, lines, onClose }) {
 
         {/* Content */}
         <div className="p-6 overflow-y-auto custom-scrollbar">
-           {lines.map((line, i) => (
-             <div 
-                key={i} 
-                className={`text-sm mb-1.5 ${i === 0 ? 'font-medium text-gray-800 mb-3' : 'text-rose-600 font-mono bg-rose-50/50 px-2 py-1 rounded border border-rose-100'}`}
-             >
-               {line}
-             </div>
-           ))}
+           {lines.length > 0 && (
+             <p className="text-sm font-medium text-gray-700 mb-4">{lines[0]}</p>
+           )}
+           <div className="flex flex-wrap gap-2">
+             {lines.slice(1).map((line, i) => (
+               <span
+                 key={i}
+                 className="inline-flex items-center text-xs font-mono font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md"
+               >
+                 {String(line)}
+               </span>
+             ))}
+           </div>
         </div>
 
         {/* Footer */}
@@ -855,29 +860,72 @@ export default function CreateShipmentBill() {
         });
       }
     } catch (err) {
-      console.error("Import Validation Error:", err);
+      console.error("Import Validation Error:", err?.response?.data ?? err);
       const resData = err.response?.data;
-      
-      // Extract invoice numbers if available in details
-      const existingInvoices = resData?.details?.existing_invoices || resData?.existing_invoices;
-      
-      if (Array.isArray(existingInvoices) && existingInvoices.length > 0) {
-         // Show manual close modal for detailed invoice list
-         setImportAlert({
-            open: true,
-            title: "Import Failed: Duplicate Invoices",
-            lines: [
-               "The following invoice numbers already exist in the system and cannot be re-imported:",
-               ...existingInvoices
-            ]
-         });
+
+      // ── Extract duplicate invoice list from any known response shape ──
+      const rawList =
+        resData?.details?.existing_invoices      ??
+        resData?.details?.duplicate_invoices     ??
+        resData?.existing_invoices               ??
+        resData?.duplicate_invoices              ??
+        resData?.data?.existing_invoices         ??
+        resData?.data?.duplicate_invoices        ??
+        resData?.errors?.existing_invoices       ??
+        resData?.errors?.invoice_no              ??
+        resData?.errors?.invoices                ??
+        null;
+
+      // Normalise: each entry → plain string
+      const toStr = (inv) =>
+        typeof inv === "object" && inv !== null
+          ? String(inv.invoice_no ?? inv.invoice ?? inv.number ?? inv.name ?? inv.id ?? JSON.stringify(inv))
+          : String(inv).trim();
+
+      let invoiceStrings = Array.isArray(rawList) ? rawList.map(toStr).filter(Boolean) : [];
+
+      // ── New shape: resData.duplicates = { "INV-001": 2, "INV-002": 3 } ──
+      if (invoiceStrings.length === 0 && resData?.duplicates && typeof resData.duplicates === "object" && !Array.isArray(resData.duplicates)) {
+        invoiceStrings = Object.keys(resData.duplicates).filter(Boolean);
+      }
+
+      // Fallback: try to parse a comma/newline separated list from the message string
+      if (invoiceStrings.length === 0 && resData?.message) {
+        const msg = String(resData.message);
+        // e.g. "Duplicate invoices: INV-001, INV-002" or "already exist: INV001\nINV002"
+        const afterColon = msg.includes(":") ? msg.split(":").slice(1).join(":").trim() : "";
+        if (afterColon) {
+          const parts = afterColon.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+          // Only treat as invoice list if entries look like invoice identifiers (not long sentences)
+          if (parts.length > 0 && parts.every((p) => p.length < 60)) {
+            invoiceStrings = parts;
+          }
+        }
+      }
+
+      if (invoiceStrings.length > 0) {
+        setImportAlert({
+          open: true,
+          title: `Import Failed: ${invoiceStrings.length} Duplicate Invoice${invoiceStrings.length > 1 ? "s" : ""}`,
+          lines: [
+            `The following ${invoiceStrings.length} invoice number${invoiceStrings.length > 1 ? "s" : ""} already exist in the system and cannot be re-imported:`,
+            ...invoiceStrings,
+          ],
+        });
+        const previewList = invoiceStrings.slice(0, 3).join(", ");
+        const overflow = invoiceStrings.length > 3 ? ` +${invoiceStrings.length - 3} more` : "";
+        setToast({
+          open: true,
+          variant: "error",
+          text: `Duplicate invoice${invoiceStrings.length > 1 ? "s" : ""}: ${previewList}${overflow}`,
+        });
       } else {
-         // Generic toast for other errors
-         setToast({ 
-            open: true, 
-            variant: "error", 
-            text: resData?.message || "Import failed. Please check your file." 
-         });
+        // Generic toast for other errors
+        setToast({
+          open: true,
+          variant: "error",
+          text: resData?.message || resData?.error || "Import failed. Please check your file.",
+        });
       }
     } finally {
       setImporting(false);
