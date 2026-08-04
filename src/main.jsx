@@ -16,7 +16,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes (Data stays fresh)
-      cacheTime: 1000 * 60 * 30, // 30 minutes (Keep in memory)
+      gcTime: 1000 * 60 * 30, // React Query v5 cache retention
       refetchOnWindowFocus: false, // Don't refetch when clicking tabs
       retry: 1,
     },

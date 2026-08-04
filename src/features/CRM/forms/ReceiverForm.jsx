@@ -2,13 +2,13 @@ import React from "react";
 import { Toaster, toast } from "react-hot-toast";
 import { getProfile } from "../../../services/authService";
 import { createParty } from "../../../services/partyService";
-import { 
-  getDocumentTypes, 
-  getPhoneCodes, 
-  getCountries, 
-  getStatesByCountry, 
-  getDistrictsByState 
-} from "../../../services/coreService";
+import { getDistrictsByState } from "../../../services/coreService";
+import {
+  getModalCountries,
+  getModalDocumentTypes,
+  getModalPhoneCodes,
+  getModalStates,
+} from "../../../utils/modalFormDataCache";
 
 /* Helpers */
 import {
@@ -98,7 +98,16 @@ export default function ReceiverForm({ onClose, onCreated }) {
     let alive = true;
     (async () => {
       try {
-        const me = await getProfile();
+        let cachedProfile = null;
+        try {
+          const cached = JSON.parse(localStorage.getItem("cargo_profile") || "null");
+          if (cached && Date.now() - Number(cached.timestamp || 0) < 5 * 60 * 1000) {
+            cachedProfile = cached.data;
+          }
+        } catch {
+          // Fall back to the profile endpoint.
+        }
+        const me = cachedProfile || await getProfile();
         if (!alive) return;
         const u = me?.data?.user ?? me?.user ?? null;
         const bid = u?.branch_id ?? u?.branchId ?? u?.branch?.id ?? "";
@@ -123,7 +132,7 @@ export default function ReceiverForm({ onClose, onCreated }) {
       try {
         setDocsLoading(true);
         setDocsError("");
-        const docsRes = await getDocumentTypes({ per_page: 1000 });
+        const docsRes = await getModalDocumentTypes();
         if (!alive) return;
         setDocTypes(normalizeList(docsRes));
       } catch {
@@ -146,7 +155,7 @@ export default function ReceiverForm({ onClose, onCreated }) {
       try {
         setPhoneCodesLoading(true);
         setPhoneCodesError("");
-        const list = await getPhoneCodes({ per_page: 1000 });
+        const list = await getModalPhoneCodes();
         if (!alive) return;
         setPhoneCodes(Array.isArray(list) ? list : []);
       } catch {
@@ -182,7 +191,7 @@ export default function ReceiverForm({ onClose, onCreated }) {
       try {
         setCountryLoading(true);
         setCountryError("");
-        const res = await getCountries({ per_page: 1000 });
+        const res = await getModalCountries();
         if (!alive) return;
         setCountries(normalizeList(res));
       } catch (e) {
@@ -211,7 +220,7 @@ export default function ReceiverForm({ onClose, onCreated }) {
         setStateLoading(true);
         setStateError("");
         setStates([]);
-        const raw = await getStatesByCountry(toApiId(form.country), { per_page: 1000 });
+        const raw = await getModalStates(toApiId(form.country));
         const all =
           Array.isArray(raw) ? raw :
           Array.isArray(raw?.states) ? raw.states :
@@ -221,11 +230,16 @@ export default function ReceiverForm({ onClose, onCreated }) {
           normalizeList(raw);
 
         const countryIdStr = String(toApiId(form.country));
-        const filtered = (all || []).filter(
-          (s) =>
-            String(s.country_id ?? s.countryId ?? s?.country?.id ?? s?.country?._id) ===
-            countryIdStr
+        const hasCountryIds = (all || []).some(
+          (s) => s.country_id ?? s.countryId ?? s?.country?.id ?? s?.country?._id
         );
+        const filtered = hasCountryIds
+          ? (all || []).filter(
+              (s) =>
+                String(s.country_id ?? s.countryId ?? s?.country?.id ?? s?.country?._id) ===
+                countryIdStr
+            )
+          : all || [];
 
         if (!alive) return;
         setStates(filtered);
@@ -248,6 +262,7 @@ export default function ReceiverForm({ onClose, onCreated }) {
       setDistricts([]);
       return;
     }
+
     let alive = true;
     (async () => {
       try {
@@ -255,18 +270,18 @@ export default function ReceiverForm({ onClose, onCreated }) {
         setDistrictError("");
         setDistricts([]);
 
-        const raw = await getDistrictsByState(toApiId(form.state), { per_page: 1000 });
-        const all =
-          Array.isArray(raw) ? raw :
-          Array.isArray(raw?.districts) ? raw.districts :
-          Array.isArray(raw?.data?.data) ? raw.data.data :
-          Array.isArray(raw?.data) ? raw.data :
-          Array.isArray(raw?.items) ? raw.items :
-          normalizeList(raw);
-
-        const stateIdStr = String(toApiId(form.state));
-        const filtered = (all || []).filter(
-          (d) => String(d.state_id ?? d.stateId ?? d?.state?.id ?? d?.state?._id) === stateIdStr
+        const raw = await getDistrictsByState(
+          Number(form.state),
+          { per_page: 1000 }
+        );
+        const filtered = normalizeList(raw).filter(
+          (district) =>
+            String(
+              district.state_id ??
+                district.stateId ??
+                district?.state?.id ??
+                district?.state?._id
+            ) === String(form.state)
         );
 
         if (!alive) return;
@@ -274,7 +289,9 @@ export default function ReceiverForm({ onClose, onCreated }) {
       } catch (e) {
         if (!alive) return;
         setDistricts([]);
-        setDistrictError(e?.response?.data?.message || e?.message || "Failed to load districts.");
+        setDistrictError(
+          e?.response?.data?.message || e?.message || "Failed to load districts."
+        );
       } finally {
         if (alive) setDistrictLoading(false);
       }

@@ -17,11 +17,9 @@ const Layout = React.memo(function Layout({ userRole }) {
 
   <div className="main flex flex-col flex-1 min-w-0 overflow-hidden">
     <Header />
-    <div className="content flex-1 overflow-y-auto bg-gray-50 p-6">
+    <div className="content box-border w-full max-w-none flex-1 overflow-y-auto p-5">
       {!isDashboard && <Breadcrumb />}
-      <div className="page-container bg-white rounded-lg shadow-sm p-6 min-h-full">
-        <Outlet />
-      </div>
+      <Outlet />
     </div>
     <Footer />
   </div>

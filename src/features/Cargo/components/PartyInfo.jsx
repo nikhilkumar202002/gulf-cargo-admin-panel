@@ -4,8 +4,8 @@ import { FaUserPlus, FaChevronDown, FaSearch } from "react-icons/fa";
 import { FiSend, FiUserCheck } from "react-icons/fi";
 
 /* --- Helpers for robust field access --- */
-const getContact = (p) => p.contact_number || p.phone || p.mobile || "";
-const getWA = (p) => p.whatsapp_number || p.whatsapp || p.whats_app || "";
+const getContact = (p) => String(p?.contact_number || p?.phone || p?.mobile || "");
+const getWA = (p) => String(p?.whatsapp_number || p?.whatsapp || p?.whats_app || "");
 
 /* --- Custom Auto-Suggest Component with Keyboard Support --- */
 const PartySelect = ({ options, value, onChange, placeholder, disabled }) => {
@@ -110,7 +110,7 @@ const PartySelect = ({ options, value, onChange, placeholder, disabled }) => {
   }, [selectedItem]);
 
   const handleSelect = (id) => {
-    onChange({ target: { value: id } }); // Mimic event for parent handler compatibility
+    onChange(String(id));
     setIsOpen(false);
     setHighlightIndex(-1);
   };
@@ -251,7 +251,7 @@ export const PartyInfo = React.memo(
             <PartySelect
               options={options.senders}
               value={form.senderId}
-              onChange={(e) => handleSelectChange(e, "sender")}
+              onChange={(id) => handleSelectChange({ target: { value: id } }, "sender")}
               placeholder="Search Name / Phone..."
               disabled={loading}
             />
@@ -300,7 +300,7 @@ export const PartyInfo = React.memo(
              <PartySelect
               options={options.receivers}
               value={form.receiverId}
-              onChange={(e) => handleSelectChange(e, "receiver")}
+              onChange={(id) => handleSelectChange({ target: { value: id } }, "receiver")}
               placeholder="Search Name / Phone..."
               disabled={loading}
             />

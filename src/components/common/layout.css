@@ -241,6 +241,9 @@
 
 .content{
     padding: 20px;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
     font-family: "Roboto";
 }
 

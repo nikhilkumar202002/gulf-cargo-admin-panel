@@ -43,9 +43,12 @@ export const login = createAsyncThunk(
       // 1. Save Token
       setTokenStore(token, { persist: true });
 
-      // 2. Fetch User Profile if missing
+      // 2. Fetch the profile only when the login endpoint did not return a user.
+      // Some API responses use role_id/roles instead of a `role` property; treating
+      // those users as incomplete caused an unnecessary second request on every login.
       let user = loginData.user || loginData.data?.user || loginData.data;
-      if (!user || !user.id || !user.role) {
+      const hasUsableUser = user && (user.id || user.user_id || user.email);
+      if (!hasUsableUser) {
         try {
            const profileData = await getProfile();
            user = profileData.user || profileData.data?.user || profileData;

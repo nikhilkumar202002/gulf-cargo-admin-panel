@@ -1,8 +1,9 @@
-import React, { useEffect } from "react";
+import React, { lazy } from "react";
 import { useSelector } from "react-redux";
-import SuperAdminPanel from "./SuperAdminPanel";
-import StaffDashboard from "./StaffDashboard";
-import AgencyDashboard from "./AgencyDashboard";
+
+const SuperAdminPanel = lazy(() => import("./SuperAdminPanel"));
+const StaffDashboard = lazy(() => import("./StaffDashboard"));
+const AgencyDashboard = lazy(() => import("./AgencyDashboard"));
 
 const dashboardMap = {
   1: SuperAdminPanel,

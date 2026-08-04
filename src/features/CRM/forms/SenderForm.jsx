@@ -6,10 +6,12 @@ import { Toaster, toast } from "react-hot-toast";
 import { getProfile } from "../../../services/authService";
 import { createParty } from "../../../services/partyService";
 import { 
-  getDocumentTypes, 
-  getPhoneCodes, 
-  getBranchByIdSmart 
+  getBranchByIdSmart
 } from "../../../services/coreService";
+import {
+  getModalDocumentTypes,
+  getModalPhoneCodes,
+} from "../../../utils/modalFormDataCache";
 /* Helpers */
 import {
   normalizeList,
@@ -24,6 +26,18 @@ const CUSTOMER_TYPE_SENDER = 1;
 const fieldBase =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 outline-none ring-emerald-500 focus:ring";
 const fieldDisabled = "disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500";
+
+const getCachedCargoProfile = () => {
+  try {
+    const cached = JSON.parse(localStorage.getItem("cargo_profile") || "null");
+    if (cached && Date.now() - Number(cached.timestamp || 0) < 5 * 60 * 1000) {
+      return cached.data;
+    }
+  } catch {
+    // Fall back to the API.
+  }
+  return null;
+};
 
 export default function SenderForm({ onClose, onCreated }) {
   const [branchId, setBranchId] = React.useState("");
@@ -59,11 +73,17 @@ export default function SenderForm({ onClose, onCreated }) {
   React.useEffect(() => {
     (async () => {
       try {
-        const [profileRes, docsRes, codesRes] = await Promise.all([
-          getProfile(),
-          getDocumentTypes({ per_page: 1000 }),
-          getPhoneCodes({ per_page: 1000 }),
-        ]);
+        const cachedProfile = getCachedCargoProfile();
+        const profileRes = cachedProfile || await getProfile();
+
+        getModalDocumentTypes()
+          .then((docsRes) => setDocTypes(normalizeList(docsRes)))
+          .catch(() => setDocsError("Failed to load document types."))
+          .finally(() => setDocsLoading(false));
+
+        getModalPhoneCodes()
+          .then((codesRes) => setPhoneCodes(Array.isArray(codesRes) ? codesRes : []))
+          .finally(() => setPhoneCodesLoading(false));
 
         const profileData = profileRes?.data?.user || profileRes?.user || profileRes?.data || profileRes || {};
         const branchDetails = profileData?.branch || profileData?.branch_details || {};
@@ -76,7 +96,7 @@ export default function SenderForm({ onClose, onCreated }) {
         const initialCity = branchDetails?.branch_location || branchDetails?.location || branchDetails?.city || "Riyadh";
         setForm((f) => ({ ...f, city: initialCity }));
 
-        if (profileBranchId) {
+        if (profileBranchId && !cachedProfile) {
           getBranchByIdSmart(profileBranchId)
             .then(branchRes => {
               const branchData = branchRes?.data || branchRes || {};
@@ -85,12 +105,6 @@ export default function SenderForm({ onClose, onCreated }) {
             })
             .catch(err => console.error("❌ Failed to fetch branch details:", err));
         }
-
-        setDocTypes(normalizeList(docsRes));
-        setDocsLoading(false);
-
-        setPhoneCodes(Array.isArray(codesRes) ? codesRes : []);
-        setPhoneCodesLoading(false);
 
       } catch (err) {
         console.error("❌ Failed to fetch profile/branch:", err);

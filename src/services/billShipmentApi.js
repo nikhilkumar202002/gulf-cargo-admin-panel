@@ -6,6 +6,8 @@ const normalizeList = (res) => {
   return Array.isArray(d) ? d : d?.data ?? [];
 };
 
+let physicalBillsRequest = null;
+
 /* --- PHYSICAL BILLS (Custom Shipments) --- */
 
 export const createPhysicalBill = async (data) => {
@@ -18,8 +20,19 @@ export const getPhysicalBills = async (params = {}, isShipment = null) => {
   const query = { ...params };
   if (isShipment !== null) query.is_shipment = isShipment ? 1 : 0;
   
-  const res = await api.get("/physical-bills", { params: query });
-  return normalizeList(res); // Returns raw array
+  const isDefaultList = isShipment === null && Object.keys(query).length === 0;
+  const request = () => api.get("/physical-bills", {
+    params: query,
+    timeout: 45000,
+  }).then(normalizeList);
+
+  if (!isDefaultList) return request();
+  if (!physicalBillsRequest) {
+    physicalBillsRequest = request().finally(() => {
+      physicalBillsRequest = null;
+    });
+  }
+  return physicalBillsRequest;
 };
 
 export const getPhysicalBillById = async (id) => {

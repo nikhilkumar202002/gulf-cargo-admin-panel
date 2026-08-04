@@ -106,7 +106,7 @@ export const getBranches = async (params = {}) => {
 
     // Fallback: return plain list
     return normalizeList(raw).map(normalizeBranch);
-  } catch (e) {
+  } catch {
     // Keep existing fallback logic
     const res = await api.get("/branch", { params });
     return normalizeList(res).map(normalizeBranch);
@@ -169,7 +169,7 @@ export const getBranchById = async (id) => {
       if (item && (item.id || item.branch_name)) {
          return normalizeBranch(item);
       }
-    } catch (e) {
+    } catch {
       // continue
     }
   }
@@ -205,7 +205,7 @@ export const getBranchUsers = async (branchId) => {
   try {
     const res = await api.get(`/branches/${branchId}/users`);
     return normalizeList(res);
-  } catch (e) {
+  } catch {
     return [];
   }
 };  
@@ -234,9 +234,21 @@ export const createShipmentMethod = async (data) => {
 };
 
 // --- SHIPMENT STATUSES ---
+let shipmentStatusesRequest = null;
 export const getShipmentStatuses = async (params = {}) => {
-  const res = await api.get("/shipment-status", { params });
-  return normalizeList(res);
+  const isDefaultList = Object.keys(params).length === 0;
+  const request = () => api.get("/shipment-status", {
+    params,
+    timeout: 45000,
+  }).then(normalizeList);
+
+  if (!isDefaultList) return request();
+  if (!shipmentStatusesRequest) {
+    shipmentStatusesRequest = request().finally(() => {
+      shipmentStatusesRequest = null;
+    });
+  }
+  return shipmentStatusesRequest;
 };
 export const createShipmentStatus = async (data) => {
   const res = await api.post("/shipment-status", data);
@@ -337,8 +349,8 @@ export const deleteInvoiceNumbering = async (id) => {
    LOCATION / GLOBAL DATA
    ========================================================================== */
 
-export const getDocumentTypes = async (params = {}) => {
-  const { data } = await api.get("/document-types", { params });
+export const getDocumentTypes = async (params = {}, config = {}) => {
+  const { data } = await api.get("/document-types", { ...config, params });
   return data?.data ?? data ?? [];
 };
 
@@ -352,23 +364,33 @@ export const getActiveCustomerTypes = async () => {
   return data?.data ?? data ?? [];
 };
 
-export const getPhoneCodes = async () => {
-  const { data } = await api.get("/phone-codes");
+export const getPhoneCodes = async (params = {}, config = {}) => {
+  const { data } = await api.get("/phone-codes", { ...config, params });
   return data?.data ?? data ?? [];
 };
 
-export const getCountries = async () => {
-  const { data } = await api.get("/countries");
+export const getCountries = async (params = {}, config = {}) => {
+  const { data } = await api.get("/countries", { ...config, params });
   return data?.data ?? data ?? [];
 };
 
-export const getStatesByCountry = async (countryId) => {
-  const { data } = await api.get("/states", { params: { country_id: countryId } });
+export const getStatesByCountry = async (countryId, params = {}, config = {}) => {
+  const requestConfig =
+    config && typeof config === "object" && !Array.isArray(config) ? config : {};
+  const { data } = await api.get("/states", {
+    ...requestConfig,
+    params: { ...params, country_id: countryId },
+  });
   return data?.data ?? data ?? [];
 };
 
-export const getDistrictsByState = async (stateId) => {
-  const { data } = await api.get("/districts", { params: { state_id: stateId } });
+export const getDistrictsByState = async (stateId, params = {}, config = {}) => {
+  const requestConfig =
+    config && typeof config === "object" && !Array.isArray(config) ? config : {};
+  const { data } = await api.get("/districts", {
+    ...requestConfig,
+    params: { ...params, state_id: stateId },
+  });
   return data?.data ?? data ?? [];
 };
 
@@ -567,4 +589,4 @@ export const getCounters = async () => {
     staffPartial: 0,
     movingPending: 0,
   };
-};getBranches
+};

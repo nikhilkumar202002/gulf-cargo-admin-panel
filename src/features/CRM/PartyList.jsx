@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   FiPlus,
@@ -106,6 +106,7 @@ const TableSkeleton = () => (
 );
 
 export default function PartyList() {
+  const hasMountedSearchEffect = useRef(false);
   const navigate = useNavigate();
 
   // Data State
@@ -222,9 +223,18 @@ export default function PartyList() {
   }, [page, selectedType, perPage]);
 
   useEffect(() => {
+    if (!hasMountedSearchEffect.current) {
+      hasMountedSearchEffect.current = true;
+      return;
+    }
+
     const timer = setTimeout(() => {
-      setPage(1);
-      loadParties();
+      if (page !== 1) {
+        // The page effect will perform the single required request.
+        setPage(1);
+      } else {
+        loadParties();
+      }
     }, 500);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

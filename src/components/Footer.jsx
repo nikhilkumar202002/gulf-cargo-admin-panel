@@ -4,7 +4,7 @@ const Footer = () => {
   return (
     <footer className="footer">
       <p className="text-center text-gray-400 text-sm">
-            © 2025 Gulf Cargo. All rights reserved. Designed by
+            © 2026 Gulf Cargo. All rights reserved. Designed by
             {' '}
             <a
                 href="https://domaindude.in"

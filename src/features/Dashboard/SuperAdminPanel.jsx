@@ -1,21 +1,13 @@
 // src/pages/SuperAdminPanel.jsx
-import React, { useEffect, useRef, useState } from "react";
-import {
-  FaTruck,
-  FaUsers,
-  FaTruckLoading
-} from "react-icons/fa";
+import React from "react";
+import { FaUsers, FaTruckLoading } from "react-icons/fa";
 import { RiMailSendFill, RiUserReceivedFill } from "react-icons/ri";
 import { PiBuildingOfficeFill } from "react-icons/pi";
 import { TbTruckDelivery, TbClockHour4 } from "react-icons/tb";
 import { BsCollectionFill } from "react-icons/bs";
 import "../Styles/Styles.css";
-
-// 1. FIXED: Import from coreService instead of dashboardCountersApi
-import { getCounters } from "../../services/coreService"; 
-
-/* ---------------- Utility ---------------- */
-const num = (v) => (typeof v === "number" && !Number.isNaN(v) ? v : 0);
+import useDashboardCounters from "./useDashboardCounters";
+import KpiCharts from "./KpiCharts";
 
 /* ---------------- Skeleton Loader ---------------- */
 const SkelLine = ({ w = 100, h = 14, className = "" }) => (
@@ -55,11 +47,7 @@ const KPI = ({ value, label, Icon, sublabel, loading }) => (
 
 /* ---------------- Main Page ---------------- */
 export default function SuperAdminPanel() {
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  
-  // 2. FIXED: Initial state updated to match API keys strictly
-  const [counters, setCounters] = useState({
+  const emptyCounters = {
     totalStaff: 0,
     totalBranches: 0,
     totalConsignees: 0,
@@ -71,48 +59,21 @@ export default function SuperAdminPanel() {
     waitingForClearance: 0,
     // Add these if you plan to use them, though coreService returns them as 0
     staffPresent: 0,
-    staffAbsent: 0, 
+    staffAbsent: 0,
     staffPartial: 0,
-    movingPending: 0, 
-  });
-
-  const fetchedRef = useRef(false);
-
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-
-    const fetchCounters = async () => {
-      try {
-        setLoading(true);
-        setErr("");
-        
-        // 3. FIXED: Call the correct API
-        const res = await getCounters(); 
-        
-        setCounters({
-          totalStaff: num(res?.totalStaff),
-          totalBranches: num(res?.totalBranches),
-          totalConsignees: num(res?.totalConsignees),
-          totalReceivers: num(res?.totalReceivers),
-          softwareShipmentsToday: num(res?.softwareShipmentsToday),
-          physicalShipmentsToday: num(res?.physicalShipmentsToday),
-          outForDelivery: num(res?.outForDelivery),
-          enquiriesCollected: num(res?.enquiriesCollected),
-          waitingForClearance: num(res?.waitingForClearance),
-
-          totalCargos: num(res?.totalCargos),
-        });
-      } catch (e) {
-        console.error(e);
-        setErr(e?.message || "Failed to load counters");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCounters();
-  }, []);
+    movingPending: 0,
+    totalCargos: 0,
+    branchWiseCargos: [],
+  };
+  const {
+    data,
+    isLoading: loading,
+    error,
+    refetch,
+    isFetching,
+  } = useDashboardCounters();
+  const counters = data || emptyCounters;
+  const err = error?.message || "";
 
   return (
     <div>
@@ -122,9 +83,9 @@ export default function SuperAdminPanel() {
           {loading ? <SkelLine w={130} h={22} /> : "Dashboard"}
         </h1>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => refetch()}
           className="px-4 py-2 rounded-lg text-sm bg-white border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:pointer-events-none"
-          disabled={loading}
+          disabled={isFetching}
         >
           {loading ? <SkelLine w={60} h={14} /> : "Refresh"}
         </button>
@@ -140,7 +101,10 @@ export default function SuperAdminPanel() {
       {/* KPI Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
         <KPI
-          value={counters.physicalShipmentsToday}
+          value={
+            (Number(counters.softwareShipmentsToday) || 0) +
+            (Number(counters.physicalShipmentsToday) || 0)
+          }
           label="Total Shipments"
           Icon={FaTruckLoading}
           loading={loading}
@@ -175,12 +139,12 @@ export default function SuperAdminPanel() {
           Icon={TbTruckDelivery}
           loading={loading}
         />
-      <KPI
-  value={counters.totalCargos} 
-  label="Total Cargos"
-  Icon={BsCollectionFill}
-  loading={loading}
-/>
+        <KPI
+          value={counters.totalCargos}
+          label="Total Cargos"
+          Icon={BsCollectionFill}
+          loading={loading}
+        />
         <KPI
           value={counters.waitingForClearance}
           label="Waiting Clearance"
@@ -188,6 +152,8 @@ export default function SuperAdminPanel() {
           loading={loading}
         />
       </div>
+
+      {!loading && <KpiCharts counters={counters} />}
 
       {/* Shimmer Animation CSS */}
       <style>{`

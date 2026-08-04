@@ -32,7 +32,12 @@ import {
 } from "../../services/coreService";
 
 import { getProfile } from "../../services/authService";
-import { getPartiesByCustomerType } from "../../services/partyService";
+import { getPartiesByCustomerType, getPartyByIdFlexible } from "../../services/partyService";
+import {
+  getModalCountries,
+  getModalDocumentTypes,
+  getModalPhoneCodes,
+} from "../../utils/modalFormDataCache";
 
 import InvoiceModal from "../../features/Finance/Invoices/InvoiceModal";
 // import BillModal from "./components/BillModal";
@@ -48,6 +53,23 @@ import { BoxesSection } from "./components/BoxesSection";
 import { ChargesAndSummary } from "./components/ChargesAndSummary";
 
 const DEFAULT_STATUS_ID = 13;
+
+const normalizePartyList = (response) => {
+  const list = unwrapArray(response);
+  return list
+    .map((party) => ({
+      ...party,
+      id: idOf(party),
+      name:
+        party?.name ||
+        party?.full_name ||
+        party?.company_name ||
+        party?.customer_name ||
+        party?.email ||
+        "Unnamed party",
+    }))
+    .filter((party) => party.id != null);
+};
 /* ---------- Initial Form ---------- */
 const buildInitialForm = (branchId = "") => ({
   branchId: branchId ? String(branchId) : "",
@@ -314,8 +336,6 @@ useEffect(() => {
       const cachedMethods = getCache("cargo_methods");
       const cachedStatuses = getCache("cargo_statuses");
       const cachedPaymentMethods = getCache("cargo_payment_methods");
-      const cachedSenders = getCache("cargo_senders");
-      const cachedReceivers = getCache("cargo_receivers");
       const cachedDeliveryTypes = getCache("cargo_delivery_types");
 
       // 🟢 STAGE 1: Fetch essential base data (use cache if available)
@@ -324,8 +344,6 @@ useEffect(() => {
         methodsRes,
         statusesRes,
         paymentMethodsRes,
-        sendersRes,
-        receiversRes,
         deliveryTypesRes,
       ] = await Promise.all([
         cachedProfile
@@ -348,16 +366,6 @@ useEffect(() => {
           : getPaymentMethods().catch(
               (e) => (console.warn("Payment methods failed:", e), [])
             ),
-        cachedSenders
-          ? Promise.resolve(cachedSenders)
-          : getPartiesByCustomerType(1).catch(
-              (e) => (console.warn("Senders failed:", e), [])
-            ),
-        cachedReceivers
-          ? Promise.resolve(cachedReceivers)
-          : getPartiesByCustomerType(2).catch(
-              (e) => (console.warn("Receivers failed:", e), [])
-            ),
         cachedDeliveryTypes
           ? Promise.resolve(cachedDeliveryTypes)
           : getDeliveryTypes().catch(
@@ -372,9 +380,6 @@ useEffect(() => {
         setCache("cargo_statuses", statusesRes);
       if (!cachedPaymentMethods && paymentMethodsRes)
         setCache("cargo_payment_methods", paymentMethodsRes);
-      if (!cachedSenders && sendersRes) setCache("cargo_senders", sendersRes);
-      if (!cachedReceivers && receiversRes)
-        setCache("cargo_receivers", receiversRes);
       if (!cachedDeliveryTypes && deliveryTypesRes)
         setCache("cargo_delivery_types", deliveryTypesRes);
 
@@ -397,9 +402,8 @@ useEffect(() => {
       const methods = unwrapArray(methodsRes);
       const statuses = unwrapArray(statusesRes);
       const paymentMethods = unwrapArray(paymentMethodsRes);
-      const senders = unwrapArray(sendersRes?.data ?? sendersRes);
-      const receivers = unwrapArray(receiversRes?.data ?? receiversRes);
       const deliveryTypes = unwrapArray(deliveryTypesRes);
+      const collectRoles = unwrapArray(collectRolesRes);
 
       // Clear cache if fetched data is empty to force fresh fetch next time
       if (!cachedProfile && (!profileRes || !profileRes?.data))
@@ -410,10 +414,6 @@ useEffect(() => {
         localStorage.removeItem("cargo_statuses");
       if (!cachedPaymentMethods && paymentMethods.length === 0)
         localStorage.removeItem("cargo_payment_methods");
-      if (!cachedSenders && senders.length === 0)
-        localStorage.removeItem("cargo_senders");
-      if (!cachedReceivers && receivers.length === 0)
-        localStorage.removeItem("cargo_receivers");
       if (!cachedDeliveryTypes && deliveryTypes.length === 0)
         localStorage.removeItem("cargo_delivery_types");
       const staffList = unwrapArray(staffRes);
@@ -460,39 +460,50 @@ useEffect(() => {
         methods,
         statuses,
         paymentMethods,
-        senders,
-        receivers,
         deliveryTypes,
+        collectRoles,
       }));
       setCollectedByOptions(staffList);
 
       // 🟣 STAGE 3: Background fetch for secondary lists
-      Promise.all([
-        getCollectedBy().catch(
-          (e) => (console.warn("Roles failed:", e), [])
-        ),
-      ]).then(([rolesRes]) => {
-        const roles = Array.isArray(rolesRes?.data)
-          ? rolesRes.data
-          : unwrapArray(rolesRes);
-
-        setOptions((prev) => ({
-          ...prev,
-          collectRoles: roles,
-        }));
-
-        // Fill remaining form defaults once roles arrive
-        updateForm((draft) => {
-          const officeRole = roles.find((r) => r.name === "Office");
-          const loggedInUserId = profile?.user?.id ?? profile?.id ?? null;
-          if (officeRole && loggedInUserId) {
-            draft.collectedByRoleId = String(officeRole.id);
-            draft.collectedByRoleName = officeRole.name;
-            draft.collectedByPersonId = String(loggedInUserId);
-          }
-        });
+      updateForm((draft) => {
+        const officeRole = collectRoles.find((r) => r.name === "Office");
+        const loggedInUserId = profile?.user?.id ?? profile?.id ?? null;
+        if (officeRole && loggedInUserId) {
+          draft.collectedByRoleId = String(officeRole.id);
+          draft.collectedByRoleName = officeRole.name;
+          draft.collectedByPersonId = String(loggedInUserId);
+        }
       });
 
+      // Large party lists are not required to render the rest of the form.
+      setLoading(false);
+      Promise.allSettled([
+        getModalDocumentTypes(),
+        getModalPhoneCodes(),
+        getModalCountries(),
+      ]);
+      const cachedSenders = getCache("cargo_senders");
+      const cachedReceivers = getCache("cargo_receivers");
+      const hasCachedSenders = Array.isArray(cachedSenders) && cachedSenders.length > 0;
+      const hasCachedReceivers = Array.isArray(cachedReceivers) && cachedReceivers.length > 0;
+      const [sendersRes, receiversRes] = await Promise.all([
+        hasCachedSenders
+          ? Promise.resolve(cachedSenders)
+          : getPartiesByCustomerType(1, { per_page: 500 }).catch(
+              (e) => (console.warn("Senders failed:", e), [])
+            ),
+        hasCachedReceivers
+          ? Promise.resolve(cachedReceivers)
+          : getPartiesByCustomerType(2, { per_page: 500 }).catch(
+              (e) => (console.warn("Receivers failed:", e), [])
+            ),
+      ]);
+      const senders = normalizePartyList(sendersRes);
+      const receivers = normalizePartyList(receiversRes);
+      if (!hasCachedSenders && senders.length) setCache("cargo_senders", senders);
+      if (!hasCachedReceivers && receivers.length) setCache("cargo_receivers", receivers);
+      setOptions((prev) => ({ ...prev, senders, receivers }));
     } catch (err) {
       console.error("Initial data load failed:", err);
       setMsg({ text: "Failed to load initial data.", variant: "error" });
@@ -503,24 +514,8 @@ useEffect(() => {
   }, [tokenBranchId, updateForm]);
 
   useEffect(() => {
-    let alive = true;
-    const fetchData = async () => {
-      if (!alive) return;
-      setMsg({ text: "", variant: "" });
-      await loadInitialData();
-    };
-    fetchData();
-
-    const handleVisibilityChange = () => {
-      if (alive && document.visibilityState === "visible") {
-        loadInitialData();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      alive = false;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    setMsg({ text: "", variant: "" });
+    loadInitialData();
   }, [loadInitialData]);
 
   const onRoleChange = useCallback(
@@ -728,13 +723,48 @@ const addItemToBox = useCallback(
   );
 
   useEffect(() => {
+    let cancelled = false;
+    const senderId = form.senderId;
+    const receiverId = form.receiverId;
+
     updateForm((draft) => {
       draft.senderAddress = addressFromParty(selectedSender) || "";
       draft.senderPhone = phoneFromParty(selectedSender) || "";
       draft.receiverAddress = addressFromParty(selectedReceiver) || "";
       draft.receiverPhone = phoneFromParty(selectedReceiver) || "";
     });
-  }, [selectedSender, selectedReceiver, updateForm]);
+
+    const loadSelectedPartyDetails = async () => {
+      const [senderDetail, receiverDetail] = await Promise.all([
+        senderId ? getPartyByIdFlexible(senderId) : Promise.resolve(null),
+        receiverId ? getPartyByIdFlexible(receiverId) : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+
+      const mergeDetail = (list, detail, id) => detail
+        ? list.map((item) => String(idOf(item)) === String(id) ? { ...item, ...detail, id: idOf(detail) ?? id } : item)
+        : list;
+
+      setOptions((prev) => ({
+        ...prev,
+        senders: mergeDetail(prev.senders, senderDetail, senderId),
+        receivers: mergeDetail(prev.receivers, receiverDetail, receiverId),
+      }));
+      updateForm((draft) => {
+        if (senderDetail) {
+          draft.senderAddress = addressFromParty(senderDetail) || draft.senderAddress;
+          draft.senderPhone = phoneFromParty(senderDetail) || draft.senderPhone;
+        }
+        if (receiverDetail) {
+          draft.receiverAddress = addressFromParty(receiverDetail) || draft.receiverAddress;
+          draft.receiverPhone = phoneFromParty(receiverDetail) || draft.receiverPhone;
+        }
+      });
+    };
+
+    loadSelectedPartyDetails();
+    return () => { cancelled = true; };
+  }, [form.senderId, form.receiverId, updateForm]);
 
   /* validation */
   const validateBeforeSubmit = useCallback(() => {
@@ -1061,12 +1091,12 @@ const softResetForNext = useCallback((branchId, nextInvoiceNo) => {
 const reloadParties = useCallback(async () => {
     try {
       const [sendersRes, receiversRes] = await Promise.all([
-        getPartiesByCustomerType(1),
-        getPartiesByCustomerType(2),
+        getPartiesByCustomerType(1, { per_page: 500 }),
+        getPartiesByCustomerType(2, { per_page: 500 }),
       ]);
 
-      const senders = unwrapArray(sendersRes?.data ?? sendersRes);
-      const receivers = unwrapArray(receiversRes?.data ?? receiversRes);
+      const senders = normalizePartyList(sendersRes);
+      const receivers = normalizePartyList(receiversRes);
 
       // --- FIX 1: Update the Cache so reloads work ---
       setCache("cargo_senders", senders);
@@ -1190,7 +1220,7 @@ const totalItems = boxes.reduce(
       </div>
 
       <div className="min-h-screen">
-        <div className="w-full max-w-6xl mx-auto bg-white md:rounded-2xl rounded-none">
+        <div className="w-full max-w-none">
           <div>
             <div className="flex gap-6 text-right text-sm text-slate-500">
               <div>
