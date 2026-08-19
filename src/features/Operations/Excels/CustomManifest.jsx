@@ -210,7 +210,6 @@ export default function ShipmentManifest() {
   }, [cargoIds]);
 
   // 3. Fetch Party Details
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -237,10 +236,9 @@ export default function ShipmentManifest() {
       });
     })();
     return () => { alive = false; };
-  }, [cargos]);
+  }, [cargos, partyMap]);
 
   // 4. Fetch Branch Details (SIMPLIFIED & FIXED)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -278,7 +276,7 @@ export default function ShipmentManifest() {
       toFetch.forEach(id => inflightBranchRef.current.delete(id));
     })();
     return () => { alive = false; };
-  }, [cargos]);
+  }, [cargos, branchMap]);
 
   const rows = useMemo(() => (Array.isArray(cargos) ? cargos : []), [cargos]);
   

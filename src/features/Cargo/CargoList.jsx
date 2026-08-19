@@ -121,7 +121,6 @@ export default function AllCargoList() {
   const [editingCargoId, setEditingCargoId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set(readStoredCargoSelection()));
   const [branches, setBranches] = useState([]); 
-  const [isSelectingAll, setIsSelectingAll] = useState(false);
 
   // --- Initial Master Data Load ---
   useEffect(() => {
@@ -240,67 +239,6 @@ export default function AllCargoList() {
     });
   };
 
-  const fetchAllMatchingCargoIds = useCallback(async () => {
-    if (filter.bookingNo) {
-      const response = await filterCargosByBookingNo(filter.bookingNo);
-      return uniqueCargoIds(unwrapArray(response).map((cargo) => cargo?.id));
-    }
-
-    const collected = [];
-    const firstResponse = await listCargos({
-      page: 1,
-      per_page: perPage,
-      branch_id: filter.branchId || undefined,
-    });
-
-    const firstPage = unwrapArray(firstResponse);
-    collected.push(...firstPage);
-
-    const pagination = firstResponse?.pagination || firstResponse?.meta;
-    const totalItems = pagination?.total_items ?? pagination?.total ?? firstPage.length;
-    const lastPage = Number(pagination?.last_page ?? Math.ceil(totalItems / perPage)) || 1;
-
-    for (let currPage = 2; currPage <= lastPage; currPage += 1) {
-      const response = await listCargos({
-        page: currPage,
-        per_page: perPage,
-        branch_id: filter.branchId || undefined,
-      });
-      collected.push(...unwrapArray(response));
-    }
-
-    return uniqueCargoIds(collected.map((cargo) => cargo?.id));
-  }, [filter.bookingNo, filter.branchId, perPage]);
-
-  const handleToggleSelectAllMatching = async () => {
-    setIsSelectingAll(true);
-    try {
-      const ids = await fetchAllMatchingCargoIds();
-      if (!ids.length) {
-        toast.error("No cargos found for the current filter");
-        return;
-      }
-
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        const allSelected = ids.every((id) => next.has(id));
-
-        if (allSelected) {
-          ids.forEach((id) => next.delete(id));
-        } else {
-          ids.forEach((id) => next.add(id));
-        }
-
-        return next;
-      });
-    } catch (err) {
-      console.error("Failed to select all cargos:", err);
-      toast.error("Unable to update selection");
-    } finally {
-      setIsSelectingAll(false);
-    }
-  };
-
   const clearSelection = () => {
     setSelectedIds(new Set());
     clearStoredCargoSelection();
@@ -341,23 +279,6 @@ export default function AllCargoList() {
             </div>
             
             <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <span className="flex-1 md:flex-none rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 border border-emerald-100">
-                  Selected: {selectedIds.size}
-                </span>
-                <button
-                  onClick={handleToggleSelectAllMatching}
-                  disabled={isSelectingAll}
-                  className="flex-1 md:flex-none bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-slate-600 px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-60"
-                >
-                  {isSelectingAll ? "Updating selection..." : "Select all matching"}
-                </button>
-                <button
-                  onClick={clearSelection}
-                  disabled={selectedIds.size === 0}
-                  className="flex-1 md:flex-none bg-white border border-slate-200 hover:border-rose-500 hover:text-rose-600 text-slate-600 px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
-                >
-                  Clear Selection
-                </button>
                 {isSuperAdmin && reportLinks.map((item) => (
                 <button 
                     key={item.label}
@@ -408,6 +329,19 @@ export default function AllCargoList() {
                 <option value="">All Branches</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
             </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 md:ml-auto">
+            <span className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 border border-emerald-100 whitespace-nowrap">
+              Selected: {selectedIds.size}
+            </span>
+            <button
+              onClick={clearSelection}
+              disabled={selectedIds.size === 0}
+              className="rounded-lg bg-white border border-slate-200 hover:border-rose-500 hover:text-rose-600 text-slate-600 px-3 py-2 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 whitespace-nowrap"
+            >
+              Clear Selection
+            </button>
           </div>
         </div>
 

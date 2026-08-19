@@ -1,4 +1,4 @@
-// src/features/Operations/Excels/DeliveryList.jsx
+﻿// src/features/Operations/Excels/DeliveryList.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment, getCargoById } from "../../../services/cargoService";
@@ -67,8 +67,10 @@ const getBoxCount = (c = {}) => {
   return 0;
 };
 
-const sumWeight = (items = []) =>
-  items.reduce((s, it) => s + Number(it?.weight ?? it?.weight_kg ?? 0), 0);
+const formatWeight = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? String(num) : "—";
+};
 
 // --- Weight Breakdown Helper (10+20+30) ---
 const parseBoxWeights = (raw) => {
@@ -86,32 +88,49 @@ const parseBoxWeights = (raw) => {
   return [];
 };
 
-const getWeightBreakdown = (c) => {
-    // 1. Try parsed box_weight
-    let weights = parseBoxWeights(c.box_weight);
-    
-    // 2. Try boxes array/object
-    if (weights.length === 0) {
-        if (Array.isArray(c.boxes)) {
-            weights = c.boxes.map(b => Number(b.weight || b.box_weight || 0));
-        } else if (c.boxes && typeof c.boxes === 'object') {
-            weights = Object.values(c.boxes).map(b => Number(b.weight || b.box_weight || 0));
-        }
-    }
+const getWeightTotal = (c = {}) => {
+  let weights = parseBoxWeights(c.box_weight);
 
-    // 3. Filter valid weights
-    weights = weights.filter(w => w > 0);
-
-    // 4. Return formatted string or total weight if single/empty
-    if (weights.length > 1) {
-        return weights.join("+");
-    } else if (weights.length === 1) {
-        return String(weights[0]);
+  if (weights.length === 0) {
+    if (Array.isArray(c.boxes)) {
+      weights = c.boxes.map((b) => Number(b?.weight || b?.box_weight || 0));
+    } else if (c.boxes && typeof c.boxes === "object") {
+      weights = Object.values(c.boxes).map((b) => Number(b?.weight || b?.box_weight || 0));
     }
-    
-    // Fallback
-    const total = Number(c.total_weight);
-    return Number.isFinite(total) && total > 0 ? String(total) : "—";
+  }
+
+  const filtered = weights.filter((w) => Number.isFinite(w) && w > 0);
+  if (filtered.length > 0) {
+    const totalFromWeights = filtered.reduce((sum, w) => sum + w, 0);
+    return formatWeight(totalFromWeights);
+  }
+
+  const total = Number(c.total_weight);
+  return Number.isFinite(total) && total > 0 ? formatWeight(total) : "—";
+};
+
+const getWeightBreakdown = (c = {}) => {
+  let weights = parseBoxWeights(c.box_weight);
+
+  if (weights.length === 0) {
+    if (Array.isArray(c.boxes)) {
+      weights = c.boxes.map((b) => Number(b?.weight || b?.box_weight || 0));
+    } else if (c.boxes && typeof c.boxes === "object") {
+      weights = Object.values(c.boxes).map((b) => Number(b?.weight || b?.box_weight || 0));
+    }
+  }
+
+  const filtered = weights.filter((w) => Number.isFinite(w) && w > 0);
+  if (filtered.length > 1) {
+    return filtered.map(formatWeight).join("+");
+  }
+
+  if (filtered.length === 1) {
+    return formatWeight(filtered[0]);
+  }
+
+  const total = Number(c.total_weight);
+  return Number.isFinite(total) && total > 0 ? formatWeight(total) : "—";
 };
 
 // --- Address Logic ---
@@ -135,6 +154,11 @@ const consigneeState = (c = {}, party = null) =>
   c.receiver_state ??
   c.consignee_state ??
   "";
+
+const formatDisplayState = (value) => {
+  if (!truthy(value)) return "";
+  return String(value).toUpperCase();
+};
 
 // --- Phone Logic ---
 const phonesOf = (pOrPrefix, maybeCargo) => {
@@ -371,14 +395,11 @@ export default function DeliveryList() {
 
   /** ===== Excel export ===== */
   const buildExportRow = (c, idx) => {
-    const items = extractItems(c);
     const pieces = getBoxCount(c);
 
     // Weights
     const weightBreakdown = getWeightBreakdown(c);
-    const weightRaw = Number(c?.total_weight);
-    const weight = Number.isFinite(weightRaw) ? weightRaw : sumWeight(items);
-    const totalWeight = Number.isFinite(weight) ? Math.trunc(weight) : "";
+    const totalWeight = getWeightTotal(c);
 
     // Parties
     const rParty = receiverPartyFor(c);
@@ -403,7 +424,7 @@ export default function DeliveryList() {
     const shipperFull = `${shipperName} ${shipperPhone}`.trim();
 
     // State
-    const state = consigneeState(c, rParty);
+    const state = formatDisplayState(consigneeState(c, rParty));
 
     return {
       "SL NO": idx + 1,
@@ -530,16 +551,12 @@ export default function DeliveryList() {
                 </tr>
               ) : (
                 rows.map((c, idx) => {
-                  const items = extractItems(c);
-                  
                   // 1. Pieces
                   const pieces = getBoxCount(c);
 
                   // 2. Weights
                   const weightBreakdown = getWeightBreakdown(c);
-                  const weightRaw = Number(c?.total_weight);
-                  const weight = Number.isFinite(weightRaw) ? weightRaw : sumWeight(items);
-                  const totalWeight = Number.isFinite(weight) ? String(Math.trunc(weight)) : "—";
+                  const totalWeight = getWeightTotal(c);
 
                   // 3. Parties
                   const rParty = receiverPartyFor(c);
@@ -565,7 +582,7 @@ export default function DeliveryList() {
                   const shipperFull = `${shipperName} ${shipperPhone}`.trim();
 
                   // 8. State
-                  const state = consigneeState(c, rParty);
+                  const state = formatDisplayState(consigneeState(c, rParty));
 
                   return (
                     <tr
@@ -575,9 +592,7 @@ export default function DeliveryList() {
                       <td className="px-3 py-2">{idx + 1}</td>
                       <td className="px-3 py-2 font-mono font-medium">{fmt(c?.booking_no ?? c?.id)}</td>
                       <td className="px-3 py-2 text-center">{fmt(pieces)}</td>
-                      <td className="px-3 py-2 text-center font-mono text-[11px] leading-tight max-w-[120px] break-words">
-                         {weightBreakdown}
-                      </td>
+                      <td className="px-3 py-2 text-center font-semibold">{fmt(weightBreakdown)}</td>
                       <td className="px-3 py-2 text-center font-semibold">{fmt(totalWeight)}</td>
                       <td className="px-3 py-2">{fmt(state)}</td>
                       
@@ -600,3 +615,4 @@ export default function DeliveryList() {
     </section>
   );
 }
+
