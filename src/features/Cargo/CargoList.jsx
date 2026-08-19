@@ -1,6 +1,6 @@
 // src/features/Cargo/CargoList.jsx
-import React, { useEffect, useState, useCallback, useMemo } from "react"; 
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"; 
+import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux"; 
 import toast, { Toaster } from "react-hot-toast";
 
@@ -14,6 +14,13 @@ import { HiOutlineDocumentText } from "react-icons/hi";
 /* API Services */
 import { listCargos, filterCargosByBookingNo,getCargoById } from "../../services/cargoService";
 import { getActiveBranches } from "../../services/coreService";
+import {
+  clearStoredCargoSelection,
+  normalizeCargoId,
+  readStoredCargoSelection,
+  uniqueCargoIds,
+  writeStoredCargoSelection,
+} from "../../utils/cargoSelection";
 
 /* Components */
 import BillModal from "./components/BillModal";
@@ -86,7 +93,7 @@ const TableSkeleton = () => (
 
 export default function AllCargoList() {
   const navigate = useNavigate();
-  const location = useLocation();
+  const pageSelectAllRef = useRef(null);
   
   // Redux
   const { token, user } = useSelector((state) => state.auth || {});
@@ -112,12 +119,13 @@ export default function AllCargoList() {
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingCargoId, setEditingCargoId] = useState(null);
-  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectedIds, setSelectedIds] = useState(() => new Set(readStoredCargoSelection()));
   const [branches, setBranches] = useState([]); 
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
 
   // --- Initial Master Data Load ---
-useEffect(() => {
-  let mounted = true;
+  useEffect(() => {
+    let mounted = true;
 
   (async () => {
     try {
@@ -132,6 +140,10 @@ useEffect(() => {
     mounted = false;
   };
 }, [token]);
+
+  useEffect(() => {
+    writeStoredCargoSelection(Array.from(selectedIds));
+  }, [selectedIds]);
 
 
   // --- Fetch Cargos ---
@@ -172,6 +184,25 @@ useEffect(() => {
     }
   }, [cargos.length]); 
 
+  const currentPageIds = useMemo(
+    () => uniqueCargoIds(cargos.map((cargo) => cargo?.id)),
+    [cargos]
+  );
+
+  const currentPageSelectedCount = useMemo(
+    () => currentPageIds.filter((id) => selectedIds.has(id)).length,
+    [currentPageIds, selectedIds]
+  );
+
+  const allCurrentPageSelected = currentPageIds.length > 0 && currentPageSelectedCount === currentPageIds.length;
+  const someCurrentPageSelected = currentPageSelectedCount > 0 && !allCurrentPageSelected;
+
+  useEffect(() => {
+    if (pageSelectAllRef.current) {
+      pageSelectAllRef.current.indeterminate = someCurrentPageSelected;
+    }
+  }, [someCurrentPageSelected]);
+
   // Debounce
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -185,14 +216,94 @@ useEffect(() => {
   const toggleSelection = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      const normalizedId = normalizeCargoId(id);
+      if (!normalizedId) return next;
+      next.has(normalizedId) ? next.delete(normalizedId) : next.add(normalizedId);
       return next;
     });
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === cargos.length && cargos.length > 0) setSelectedIds(new Set());
-    else setSelectedIds(new Set(cargos.map(c => c.id)));
+  const toggleSelectVisible = () => {
+    if (!currentPageIds.length) return;
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allVisibleSelected = currentPageIds.every((id) => next.has(id));
+
+      if (allVisibleSelected) {
+        currentPageIds.forEach((id) => next.delete(id));
+      } else {
+        currentPageIds.forEach((id) => next.add(id));
+      }
+
+      return next;
+    });
+  };
+
+  const fetchAllMatchingCargoIds = useCallback(async () => {
+    if (filter.bookingNo) {
+      const response = await filterCargosByBookingNo(filter.bookingNo);
+      return uniqueCargoIds(unwrapArray(response).map((cargo) => cargo?.id));
+    }
+
+    const collected = [];
+    const firstResponse = await listCargos({
+      page: 1,
+      per_page: perPage,
+      branch_id: filter.branchId || undefined,
+    });
+
+    const firstPage = unwrapArray(firstResponse);
+    collected.push(...firstPage);
+
+    const pagination = firstResponse?.pagination || firstResponse?.meta;
+    const totalItems = pagination?.total_items ?? pagination?.total ?? firstPage.length;
+    const lastPage = Number(pagination?.last_page ?? Math.ceil(totalItems / perPage)) || 1;
+
+    for (let currPage = 2; currPage <= lastPage; currPage += 1) {
+      const response = await listCargos({
+        page: currPage,
+        per_page: perPage,
+        branch_id: filter.branchId || undefined,
+      });
+      collected.push(...unwrapArray(response));
+    }
+
+    return uniqueCargoIds(collected.map((cargo) => cargo?.id));
+  }, [filter.bookingNo, filter.branchId, perPage]);
+
+  const handleToggleSelectAllMatching = async () => {
+    setIsSelectingAll(true);
+    try {
+      const ids = await fetchAllMatchingCargoIds();
+      if (!ids.length) {
+        toast.error("No cargos found for the current filter");
+        return;
+      }
+
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        const allSelected = ids.every((id) => next.has(id));
+
+        if (allSelected) {
+          ids.forEach((id) => next.delete(id));
+        } else {
+          ids.forEach((id) => next.add(id));
+        }
+
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to select all cargos:", err);
+      toast.error("Unable to update selection");
+    } finally {
+      setIsSelectingAll(false);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    clearStoredCargoSelection();
   };
 
   const handleExcelExport = () => {
@@ -230,6 +341,23 @@ useEffect(() => {
             </div>
             
             <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <span className="flex-1 md:flex-none rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 border border-emerald-100">
+                  Selected: {selectedIds.size}
+                </span>
+                <button
+                  onClick={handleToggleSelectAllMatching}
+                  disabled={isSelectingAll}
+                  className="flex-1 md:flex-none bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-slate-600 px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-60"
+                >
+                  {isSelectingAll ? "Updating selection..." : "Select all matching"}
+                </button>
+                <button
+                  onClick={clearSelection}
+                  disabled={selectedIds.size === 0}
+                  className="flex-1 md:flex-none bg-white border border-slate-200 hover:border-rose-500 hover:text-rose-600 text-slate-600 px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+                >
+                  Clear Selection
+                </button>
                 {isSuperAdmin && reportLinks.map((item) => (
                 <button 
                     key={item.label}
@@ -295,8 +423,9 @@ useEffect(() => {
                     <th className="px-4 py-4 w-12 text-center">
                       <input 
                         type="checkbox" 
-                        checked={cargos.length > 0 && selectedIds.size === cargos.length} 
-                        onChange={toggleSelectAll} 
+                        ref={pageSelectAllRef}
+                        checked={allCurrentPageSelected} 
+                        onChange={toggleSelectVisible} 
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4" 
                       />
                     </th>
@@ -313,13 +442,13 @@ useEffect(() => {
                     <tr><td colSpan="8" className="p-12 text-center text-slate-400 italic">No shipments found matching your criteria.</td></tr>
                   ) : (
                     cargos.map((c) => (
-                      <tr key={c.id} className={`group hover:bg-slate-50 transition-colors duration-150 ${selectedIds.has(c.id) ? "bg-indigo-50/40" : ""}`}>
+                      <tr key={c.id} className={`group hover:bg-slate-50 transition-colors duration-150 ${selectedIds.has(normalizeCargoId(c.id)) ? "bg-indigo-50/40" : ""}`}>
                         
                         {/* 1. Checkbox */}
                         <td className="px-4 py-4 text-center">
                            <input 
                               type="checkbox" 
-                              checked={selectedIds.has(c.id)} 
+                              checked={selectedIds.has(normalizeCargoId(c.id))} 
                               onChange={() => toggleSelection(c.id)} 
                               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4" 
                             />

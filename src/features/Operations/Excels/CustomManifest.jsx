@@ -4,12 +4,12 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment, getCargoById } from "../../../services/cargoService";
 import { getBranchById } from "../../../services/coreService";
 import { getPartyByIdFlexible } from "../../../services/partyService";
+import { readStoredCargoSelection, uniqueCargoIds } from "../../../utils/cargoSelection";
 import * as XLSX from "xlsx";
 
 /* ================= DEBUG ================= */
 const DEBUG = true; 
 const info = (...a) => DEBUG && console.info("[Manifest]", ...a);
-const warn = (...a) => DEBUG && console.warn("[Manifest]", ...a);
 const errL = (...a) => DEBUG && console.error("[Manifest]", ...a);
 
 /* ================= utils ================= */
@@ -132,12 +132,23 @@ const stripCountryCode = (phone) => {
   return s; 
 };
 
+const CountBadge = ({ label, value, color = "bg-slate-100 text-slate-700" }) => (
+  <span className={`inline-flex items-center gap-1 rounded-full ${color} px-2.5 py-1 text-xs font-medium`}>
+    <span className="opacity-80">{label}:</span>
+    <span className="font-semibold">{value}</span>
+  </span>
+);
+
 /* ================= component ================= */
 export default function ShipmentManifest() {
   const { id } = useParams(); 
   const navigate = useNavigate();
   const location = useLocation();
   const stateIds = location.state?.selectedIds; 
+  const selectedCargoIds = useMemo(
+    () => uniqueCargoIds(stateIds?.length ? stateIds : readStoredCargoSelection()),
+    [stateIds]
+  );
 
   const [cargoIds, setCargoIds] = useState([]);
   const [cargos, setCargos] = useState([]);
@@ -153,8 +164,8 @@ export default function ShipmentManifest() {
     let alive = true;
     (async () => {
       setLoading(true);
-      if (stateIds && stateIds.length > 0) {
-        setCargoIds(stateIds);
+      if (selectedCargoIds.length > 0) {
+        setCargoIds(selectedCargoIds);
         setLoading(false);
         return;
       }
@@ -167,14 +178,14 @@ export default function ShipmentManifest() {
         const ship = unwrapData(res);
         const ids = ship?.cargos?.map(c => Number(c.id)).filter(Boolean) || [];
         if (alive) setCargoIds(ids);
-      } catch (e) {
+      } catch {
         if (alive) setErr("Failed to load shipment");
       } finally {
         if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
-  }, [id, stateIds]);
+  }, [id, selectedCargoIds]);
 
   // 2. Fetch Cargo Data
   useEffect(() => {
@@ -199,6 +210,7 @@ export default function ShipmentManifest() {
   }, [cargoIds]);
 
   // 3. Fetch Party Details
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -228,6 +240,7 @@ export default function ShipmentManifest() {
   }, [cargos]);
 
   // 4. Fetch Branch Details (SIMPLIFIED & FIXED)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -367,14 +380,6 @@ export default function ShipmentManifest() {
     }
   };
 
-  /* ================= Presentation helpers ================= */
-  const CountBadge = ({ label, value, color = "bg-slate-100 text-slate-700" }) => (
-    <span className={`inline-flex items-center gap-1 rounded-full ${color} px-2.5 py-1 text-xs font-medium`}>
-      <span className="opacity-80">{label}:</span>
-      <span className="font-semibold">{value}</span>
-    </span>
-  );
-
   const totalPieces = useMemo(
     () => rows.reduce((acc, c) => acc + getBoxCount(c), 0),
     [rows]
@@ -401,6 +406,7 @@ export default function ShipmentManifest() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <CountBadge label="Selected" value={cargoIds.length} color="bg-emerald-50 text-emerald-700" />
             <CountBadge label="Rows" value={rows.length} />
             <CountBadge label="Pieces" value={totalPieces} color="bg-blue-50 text-blue-700" />
             <CountBadge

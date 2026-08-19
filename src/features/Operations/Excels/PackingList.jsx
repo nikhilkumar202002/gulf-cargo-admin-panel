@@ -2,19 +2,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment, getCargoById } from "../../../services/cargoService"; 
+import { readStoredCargoSelection, uniqueCargoIds } from "../../../utils/cargoSelection";
 
 /** ================= DEBUG ================= */
 
 const DEBUG = false;
 
-const log  = (...a) => DEBUG && console.log("[PackingList]", ...a);
 const info = (...a) => DEBUG && console.info("[PackingList]", ...a);
 const warn = (...a) => DEBUG && console.warn("[PackingList]", ...a);
 
 const errL = (...a) => DEBUG && console.error("[PackingList]", ...a);
 
 /** ================= helpers ================= */
-const truthy = (v) => !(v == null || (typeof v === "string" && v.trim() === ""));
 const fmt = (v) => (v === 0 || v ? String(v) : "—");
 
 /** Unwrap cargo from several possible shapes */
@@ -81,6 +80,10 @@ export default function PackingList() {
   const navigate = useNavigate();
   const location = useLocation();
   const stateIds = location.state?.selectedIds;
+  const selectedCargoIds = useMemo(
+    () => uniqueCargoIds(stateIds?.length ? stateIds : readStoredCargoSelection()),
+    [stateIds]
+  );
 
   const [cargoIds, setCargoIds] = useState([]);
   const [cargos, setCargos] = useState([]);
@@ -93,8 +96,8 @@ export default function PackingList() {
     (async () => {
       setLoading(true); setErr("");
       
-      if (stateIds && stateIds.length > 0) {
-          setCargoIds(stateIds);
+      if (selectedCargoIds.length > 0) {
+          setCargoIds(selectedCargoIds);
           setLoading(false);
           return;
       }
@@ -122,13 +125,11 @@ export default function PackingList() {
         if (!alive) return;
         setErr(e?.message || "Failed to load shipment");
         errL("Shipment fetch failed", e);
-      } finally {
-        if (!alive) return;
-        setLoading(false);
       }
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
-  }, [id, stateIds]);
+  }, [id, selectedCargoIds]);
 
   /** 2) For each cargo id, fetch detail (batched to be gentle on the API) */
   useEffect(() => {
@@ -145,7 +146,6 @@ export default function PackingList() {
 
         const collected = [];
         for (const group of batches) {
-          /* eslint-disable no-await-in-loop */
           const groupResults = await Promise.all(
             group.map(async (cid) => {
               try {
@@ -161,14 +161,14 @@ export default function PackingList() {
             })
           );
           collected.push(...groupResults.filter(Boolean));
-          /* eslint-enable no-await-in-loop */
         }
 
         if (!alive) return;
         setCargos(collected);
-      } finally {
-        if (alive) setLoading(false);
+      } catch (e) {
+        if (alive) errL("Cargo fetch failed", e);
       }
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
   }, [cargoIds]);
@@ -190,6 +190,9 @@ export default function PackingList() {
           <div className="flex items-center gap-2 text-sm">
             <span className="rounded-full bg-slate-100 px-2.5 py-1">
               Rows: <span className="font-semibold">{rows.length}</span>
+            </span>
+            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">
+              Selected: <span className="font-semibold">{cargoIds.length}</span>
             </span>
           </div>
         </div>

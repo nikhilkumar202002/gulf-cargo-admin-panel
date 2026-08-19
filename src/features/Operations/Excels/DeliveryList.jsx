@@ -3,13 +3,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment, getCargoById } from "../../../services/cargoService";
 import { getPartyByIdFlexible, findPartyIdByName } from "../../../services/partyService";
+import { readStoredCargoSelection, uniqueCargoIds } from "../../../utils/cargoSelection";
 import * as XLSX from "xlsx";
 
 /** ================= DEBUG ================= */
 
 const DEBUG = false;
 
-const log  = (...a) => DEBUG && console.log("[DeliveryList]", ...a);
 const info = (...a) => DEBUG && console.info("[DeliveryList]", ...a);
 const warn = (...a) => DEBUG && console.warn("[DeliveryList]", ...a);
 
@@ -194,6 +194,10 @@ export default function DeliveryList() {
   const navigate = useNavigate();
   const location = useLocation();
   const stateIds = location.state?.selectedIds;
+  const selectedCargoIds = useMemo(
+    () => uniqueCargoIds(stateIds?.length ? stateIds : readStoredCargoSelection()),
+    [stateIds]
+  );
 
   const [cargoIds, setCargoIds] = useState([]);
   const [cargos, setCargos] = useState([]);
@@ -210,8 +214,8 @@ export default function DeliveryList() {
       setLoading(true); setErr("");
       
       // Use state IDs if available
-      if (stateIds && stateIds.length > 0) {
-          setCargoIds(stateIds);
+      if (selectedCargoIds.length > 0) {
+          setCargoIds(selectedCargoIds);
           setLoading(false);
           return;
       }
@@ -239,13 +243,11 @@ export default function DeliveryList() {
         if (!alive) return;
         setErr(e?.message || "Failed to load shipment");
         errL("Shipment fetch failed", e);
-      } finally {
-        if (!alive) return;
-        setLoading(false);
       }
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
-  }, [id, stateIds]);
+  }, [id, selectedCargoIds]);
 
   /** 2) For each cargo id, fetch detail (resolve missing IDs by name) */
   useEffect(() => {
@@ -263,7 +265,6 @@ export default function DeliveryList() {
 
         const collected = [];
         for (const group of batches) {
-          /* eslint-disable no-await-in-loop */
           const groupResults = await Promise.all(
             group.map(async (cid) => {
               try {
@@ -292,14 +293,14 @@ export default function DeliveryList() {
             })
           );
           collected.push(...groupResults.filter(Boolean));
-          /* eslint-enable no-await-in-loop */
         }
 
         if (!alive) return;
         setCargos(collected);
-      } finally {
-        if (alive) setLoading(false);
+      } catch (e) {
+        if (alive) errL("Cargo fetch failed", e);
       }
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
   }, [cargoIds]);
@@ -327,20 +328,18 @@ export default function DeliveryList() {
         const fetchedEntries = [];
 
         for (let i = 0; i < ids.length; i += BATCH) {
-          /* eslint-disable no-await-in-loop */
           const slice = ids.slice(i, i + BATCH);
           const entries = await Promise.all(
             slice.map(async (pid) => {
               try {
                 const party = await getPartyByIdFlexible(Number(pid));
                 return [pid, party ?? null];
-              } catch (e) {
+              } catch {
                 return [pid, null];
               }
             })
           );
           fetchedEntries.push(...entries);
-          /* eslint-enable no-await-in-loop */
         }
 
         if (!alive) return;
@@ -349,9 +348,10 @@ export default function DeliveryList() {
           fetchedEntries.forEach(([pid, p]) => { if (p) next[pid] = p; });
           return next;
         });
-      } finally {
-        if (alive) setPartyLoading(false);
+      } catch (e) {
+        if (alive) errL("Party fetch failed", e);
       }
+      if (alive) setPartyLoading(false);
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -446,6 +446,9 @@ export default function DeliveryList() {
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm">
+            <span className="rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-1">
+              Selected: <span className="font-semibold">{cargoIds.length}</span>
+            </span>
             <button
               onClick={handleExportExcel}
               className="rounded-lg border border-green-300 bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
