@@ -1,12 +1,10 @@
-﻿// src/features/Operations/Excels/DeliveryList.jsx
+﻿
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment, getCargoById } from "../../../services/cargoService";
 import { getPartyByIdFlexible, findPartyIdByName } from "../../../services/partyService";
 import { readStoredCargoSelection, uniqueCargoIds } from "../../../utils/cargoSelection";
 import * as XLSX from "xlsx";
-
-/** ================= DEBUG ================= */
 
 const DEBUG = false;
 
@@ -27,7 +25,7 @@ const cleanJoin = (arr, separator = ", ") =>
     .replace(new RegExp(`\\s*${separator.trim()}\\s*${separator.trim()}+`, "g"), separator)
     .trim();
 
-/** Unwrap cargo from several possible shapes */
+
 const unwrapCargo = (raw) => {
   const d = raw?.data ?? raw;
   if (!d) return null;
@@ -77,8 +75,16 @@ const parseBoxWeights = (raw) => {
   if (raw == null || raw === "" || raw === "null") return [];
   try {
     if (typeof raw === "string") {
-      if (raw.includes(",") && !raw.trim().startsWith("{") && !raw.trim().startsWith("[")) {
-        return raw.split(",").map(s => Number(s.trim())).filter(n => Number.isFinite(n));
+      const trimmed = raw.trim();
+      if (
+        /[,+/|]/.test(trimmed) &&
+        !trimmed.startsWith("{") &&
+        !trimmed.startsWith("[")
+      ) {
+        return trimmed
+          .split(/[,+/|]/)
+          .map((s) => Number(s.trim()))
+          .filter((n) => Number.isFinite(n));
       }
       return parseBoxWeights(JSON.parse(raw));
     }
@@ -88,7 +94,7 @@ const parseBoxWeights = (raw) => {
   return [];
 };
 
-const getWeightTotal = (c = {}) => {
+const getCargoWeights = (c = {}) => {
   let weights = parseBoxWeights(c.box_weight);
 
   if (weights.length === 0) {
@@ -99,7 +105,11 @@ const getWeightTotal = (c = {}) => {
     }
   }
 
-  const filtered = weights.filter((w) => Number.isFinite(w) && w > 0);
+  return weights.filter((w) => Number.isFinite(w) && w > 0);
+};
+
+const getWeightTotal = (c = {}) => {
+  const filtered = getCargoWeights(c);
   if (filtered.length > 0) {
     const totalFromWeights = filtered.reduce((sum, w) => sum + w, 0);
     return formatWeight(totalFromWeights);
@@ -110,17 +120,7 @@ const getWeightTotal = (c = {}) => {
 };
 
 const getWeightBreakdown = (c = {}) => {
-  let weights = parseBoxWeights(c.box_weight);
-
-  if (weights.length === 0) {
-    if (Array.isArray(c.boxes)) {
-      weights = c.boxes.map((b) => Number(b?.weight || b?.box_weight || 0));
-    } else if (c.boxes && typeof c.boxes === "object") {
-      weights = Object.values(c.boxes).map((b) => Number(b?.weight || b?.box_weight || 0));
-    }
-  }
-
-  const filtered = weights.filter((w) => Number.isFinite(w) && w > 0);
+  const filtered = getCargoWeights(c);
   if (filtered.length > 1) {
     return filtered.map(formatWeight).join("+");
   }
@@ -157,7 +157,7 @@ const consigneeState = (c = {}, party = null) =>
 
 const formatDisplayState = (value) => {
   if (!truthy(value)) return "";
-  return String(value).toUpperCase();
+  return String(value).trim().toUpperCase();
 };
 
 // --- Phone Logic ---
