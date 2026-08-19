@@ -777,6 +777,9 @@ export default function InvoiceView({
       "summary.total",
     ]),
   );
+  const specialRemarks = String(
+    pick(shipment, ["special_remarks", "specialRemarks"], "") || "",
+  ).trim();
 
   if (loading)
     return <div className="p-6 text-slate-600">Loading invoice…</div>;
@@ -1438,6 +1441,12 @@ export default function InvoiceView({
               );
             })()}
           </section>
+
+          {specialRemarks && (
+            <div className="mt-2 px-1 text-[10px] text-red-600">
+              Special Remarks : {specialRemarks}
+            </div>
+          )}
 
           {/* Footer */}
           <div className="border-t border-slate-200 px-1 py-2 mt-4">
