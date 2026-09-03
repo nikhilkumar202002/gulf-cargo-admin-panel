@@ -23,20 +23,11 @@ function BillsViews() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(""); // holds a status NAME from the master list
-  const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
-    current_page: 1,
-    last_page: 1,
-    per_page: 10,
-    total: 0,
-  });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
-
-  const pageSize = 10;
 
   /** ---------- small utils ---------- */
   const str = (v) => (v == null ? "" : String(v));
@@ -94,26 +85,14 @@ function BillsViews() {
   };
 
   /** ---------- data fetch ---------- */
-  const fetchBills = useCallback(async (pageArg = page, queryArg = q) => {
+  const fetchBills = useCallback(async (queryArg = q) => {
     setLoading(true);
     try {
       const data = await getPhysicalBills({
-        page: pageArg,
-        per_page: pageSize,
         search: queryArg.trim() || undefined,
       });
       const list = Array.isArray(data) ? data : [];
       setRows(list);
-
-      const meta = data?.pagination || data?.meta;
-      setPagination({
-        current_page: meta?.current_page ?? pageArg,
-        last_page:
-          meta?.last_page ??
-          (list.length === pageSize ? pageArg + 1 : pageArg),
-        per_page: meta?.per_page ?? pageSize,
-        total: meta?.total ?? list.length,
-      });
     } catch (err) {
       console.error(err);
       toast.error(err?.code === "ECONNABORTED" ? "The bills server is taking too long. Please try again." : "Failed to load bills.");
@@ -121,7 +100,7 @@ function BillsViews() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, pageSize]);
+  }, [q]);
 
   const [statusList, setStatusList] = useState([]);
   const statusMap = useMemo(() => {
@@ -238,18 +217,16 @@ function BillsViews() {
     }
   };
 
-  const totalPages = Math.max(1, pagination.last_page || 1);
-  const safePage = Math.min(page, totalPages);
-  const paged = status
+  const filteredRows = status
     ? rows.filter((row) => statusLabel(row).toLowerCase() === status.toLowerCase())
     : rows;
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchBills(page, q);
+      fetchBills(q);
     }, 400);
     return () => clearTimeout(timer);
-  }, [page, q, status, fetchBills]);
+  }, [q, status, fetchBills]);
 
   const handleDelete = async (id) => {
     if (!id) return toast.error("Invalid bill ID");
@@ -292,7 +269,7 @@ function BillsViews() {
             <span className="inline-flex items-center rounded-full bg-gradient-to-r from-emerald-50 to-sky-50 border border-slate-200 px-3 py-1 text-sm">
               Total:&nbsp;
               <span className="font-semibold text-slate-800">
-                {pagination.total}
+                {rows.length}
               </span>
             </span>
           </div>
@@ -313,7 +290,6 @@ function BillsViews() {
                 value={q}
                 onChange={(e) => {
                   setQ(e.target.value);
-                  setPage(1);
                 }}
                 className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 shadow-sm focus:border-sky-300 focus:ring-2 focus:ring-sky-200 transition"
               />
@@ -326,7 +302,6 @@ function BillsViews() {
                 value={status}
                 onChange={(e) => {
                   setStatus(e.target.value);
-                  setPage(1);
                 }}
                 className="appearance-none w-full sm:w-56 rounded-xl border border-slate-200 bg-white pl-10 pr-8 py-2.5 text-sm text-slate-800 shadow-sm focus:border-emerald-300 focus:ring-2 focus:ring-emerald-200 transition"
               >
@@ -403,7 +378,7 @@ function BillsViews() {
                     ))}
                   </tr>
                 ))
-              ) : paged.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-500">
@@ -420,8 +395,8 @@ function BillsViews() {
                   </td>
                 </tr>
               ) : (
-                paged.map((r, idx) => {
-                  const slno = (safePage - 1) * pageSize + idx + 1;
+                filteredRows.map((r, idx) => {
+                  const slno = idx + 1;
                   const pcsVal = pcs(r);
                   const wtVal = weight(r);
                   const dVal = fmtDate(isoDate(r));
@@ -531,29 +506,6 @@ function BillsViews() {
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 p-4 bg-gradient-to-r from-white to-slate-50/50">
-          <div className="text-xs sm:text-sm text-slate-600">
-            Page <span className="font-medium">{safePage}</span> of{" "}
-            <span className="font-medium">{totalPages}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage === 1}
-            >
-              Prev
-            </button>
-            <button
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage === totalPages}
-            >
-              Next
-            </button>
-          </div>
-        </div>
       </div>
     </section>
   );
