@@ -16,7 +16,7 @@ import {
   FiEdit2,
   FiTrash2,
 } from "react-icons/fi";
-import { getShipmentStatuses } from "../../services/coreService";
+import { useShipmentStatuses } from "../../hooks/useMasterData";
 
 function BillsViews() {
   const [rows, setRows] = useState([]);
@@ -102,7 +102,7 @@ function BillsViews() {
     }
   }, [q]);
 
-  const [statusList, setStatusList] = useState([]);
+  const { data: statusList = [] } = useShipmentStatuses();
   const statusMap = useMemo(() => {
     const m = new Map();
     for (const s of statusList)
@@ -116,23 +116,6 @@ function BillsViews() {
     const direct = str(r?.status_name || r?.current_status || r?.state).trim();
     return direct || raw || "—";
   };
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const list = await getShipmentStatuses();
-        if (!alive) return;
-        setStatusList(Array.isArray(list) ? list : []);
-      } catch (e) {
-        console.error("Failed to load statuses", e);
-        setStatusList([]);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   /** ---------- import (Excel/CSV) ---------- */
   const onPickFile = () => fileInputRef.current?.click();

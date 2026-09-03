@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { useShipmentDropdowns } from "../../hooks/useMasterData";
 import { 
   PiShippingContainerFill, 
   PiAirplaneTiltFill, 
@@ -16,12 +17,7 @@ import {
   PiWarningCircleBold
 } from "react-icons/pi";
 
-import {
-  getShipmentMethods,
-  getPorts,
-  getActiveBranches,
-  getShipmentStatuses
-} from "../../services/coreService";
+import { getActiveBranches } from "../../services/coreService";
 import { getProfile } from "../../services/authService";
 import {
   getPhysicalBills,
@@ -249,11 +245,13 @@ const getStatusText = (row, statusById = new Map()) => {
 };
 
 export default function CreateShipmentBill() {
+  const { data: dropdowns = {} } = useShipmentDropdowns();
+
   // dropdown data
-  const [shipmentMethods, setShipmentMethods] = useState([]);
-  const [ports, setPorts] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [shipmentStatuses, setShipmentStatuses] = useState([]);
+  const shipmentMethods = dropdowns.methods || [];
+  const ports = dropdowns.ports || [];
+  const shipmentStatuses = dropdowns.statuses || [];
 
   // Redux fallbacks
   const selBranchId = useSelector((s) => s.branch?.branchId);
@@ -276,9 +274,21 @@ export default function CreateShipmentBill() {
   const [profileObj, setProfileObj] = useState(null);
 
   // status maps
-  const [statusList, setStatusList] = useState([]);
-  const [statusMaps, setStatusMaps] = useState({ byId: new Map(), byName: new Map() });
-  const [defaultShipmentStatusId, setDefaultShipmentStatusId] = useState("");
+  const statusMaps = useMemo(() => buildStatusMaps(shipmentStatuses), [shipmentStatuses]);
+  const defaultShipmentStatusId = useMemo(
+    () => shipmentStatuses.find((s) => s.name?.toLowerCase() === "shipment booked")?.id || "",
+    [shipmentStatuses],
+  );
+
+  useEffect(() => {
+    if (defaultShipmentStatusId) {
+      setFormData((prev) =>
+        prev.shipmentStatus
+          ? prev
+          : { ...prev, shipmentStatus: String(defaultShipmentStatusId) },
+      );
+    }
+  }, [defaultShipmentStatusId]);
 
   // form data
   const [formData, setFormData] = useState({
@@ -332,35 +342,18 @@ export default function CreateShipmentBill() {
   const [importing, setImporting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  /* ---------- bootstrap: fetch dropdowns + profile + statuses ---------- */
+  /* ---------- bootstrap: fetch branches + profile ---------- */
   useEffect(() => {
     (async () => {
       try {
-        const [methods, portList, branchList, statuses, me] = await Promise.all([
-          getShipmentMethods(),
-          getPorts(),
+        const [branchList, me] = await Promise.all([
           getActiveBranches(),
-          getShipmentStatuses(),
           getProfile(),
         ]);
 
-        const methodsArr = unwrapArray(methods);
-        const portsArr = unwrapArray(portList);
         const branchesArr = unwrapArray(branchList);
-        const statusesArr = unwrapArray(statuses);
 
-        setShipmentMethods(methodsArr);
-        setPorts(portsArr);
         setBranches(branchesArr);
-        setShipmentStatuses(statusesArr);
-        setStatusList(statusesArr);
-        setStatusMaps(buildStatusMaps(statusesArr));
-
-        const defaultStatus = statusesArr.find(s => s.name?.toLowerCase() === 'shipment booked');
-        if (defaultStatus) {
-          setDefaultShipmentStatusId(defaultStatus.id);
-          setFormData(prev => ({ ...prev, shipmentStatus: String(defaultStatus.id) }));
-        }
 
         setProfileObj(me?.data ?? me ?? null);
       } catch (e) {

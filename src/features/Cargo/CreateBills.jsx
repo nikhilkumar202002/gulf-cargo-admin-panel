@@ -1,11 +1,11 @@
 // src/pages/PhysicalBills/CreateBills.jsx
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { LiaFileInvoiceDollarSolid } from "react-icons/lia";
 import { Link } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import "./PhysicalBill.css";
-import { getShipmentMethods } from "../../services/coreService";
 import { createPhysicalBill } from "../../services/billShipmentApi"; // <-- NEW
+import { useShipmentMethods } from "../../hooks/useMasterData";
 
 function CreateBills() {
   const FIXED_STATUS = 13; // locked status
@@ -21,34 +21,14 @@ function CreateBills() {
 
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false); // <-- NEW
-  const [loadingMethods, setLoadingMethods] = useState(true);
-  const [methodOptions, setMethodOptions] = useState([{ id: "", name: "Loading…" }]);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoadingMethods(true);
-        const methods = await getShipmentMethods();
-        if (!alive) return;
-        const opts = methods?.length
-          ? methods.map((m) => ({
-              id: String(m?.id ?? m?.code ?? m?.uuid ?? m?.value ?? m?.name ?? ""),
-              name: String(m?.name ?? m?.label ?? m?.code ?? "Unnamed"),
-            }))
-          : [];
-        setMethodOptions([{ id: "", name: "Select shipment method" }, ...opts]);
-      } catch (err) {
-        setMethodOptions([{ id: "", name: "Failed to load methods" }]);
-        toast.error("Failed to load shipment methods.");
-      } finally {
-        setLoadingMethods(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const { data: methods = [], isLoading: loadingMethods, isError: methodsError } = useShipmentMethods();
+  const methodOptions = [
+    { id: "", name: methodsError ? "Failed to load methods" : "Select shipment method" },
+    ...methods.map((m) => ({
+      id: String(m?.id ?? m?.code ?? m?.uuid ?? m?.value ?? m?.name ?? ""),
+      name: String(m?.name ?? m?.label ?? m?.code ?? "Unnamed"),
+    })),
+  ];
 
   const onChange = (e) => {
     const { name, value } = e.target;

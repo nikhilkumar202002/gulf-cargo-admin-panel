@@ -12,8 +12,8 @@ import { HiOutlineCurrencyDollar } from "react-icons/hi";
 import { BsWhatsapp } from "react-icons/bs"; // Corrected Import
 
 /* Services */
-import { getCargoById } from "../../services/cargoService";
 import { getPartyByIdFlexible } from "../../services/partyService";
+import { useCargo } from "../../hooks/useCargo";
 
 /* Styles */
 import "./ShipmentStyles.css";
@@ -185,27 +185,16 @@ export default function ViewCargo() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [cargo, setCargo] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
   const [senderParty, setSenderParty] = useState(null);
   const [receiverParty, setReceiverParty] = useState(null);
 
-  // --- Fetch Cargo ---
-  useEffect(() => {
-    (async () => {
-      setLoading(true); setErr("");
-      try {
-        const res = await getCargoById(id);
-        const c = res?.cargo ?? res?.data?.cargo ?? (res?.success && res?.cargo ? res.cargo : res);
-        setCargo(c || {});
-      } catch (e) {
-        setErr(e?.message || "Failed to fetch cargo.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [id]);
+  const { data: cargoResponse, isLoading: loading, error } = useCargo(id);
+  const cargo = useMemo(() => {
+    const c = cargoResponse?.cargo ??
+      cargoResponse?.data?.cargo ??
+      (cargoResponse?.success && cargoResponse?.cargo ? cargoResponse.cargo : cargoResponse);
+    return c || null;
+  }, [cargoResponse]);
 
   // --- Fetch Parties ---
   useEffect(() => {
@@ -251,7 +240,7 @@ export default function ViewCargo() {
   }, [cargo, boxList]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Loading details...</div>;
-  if (err) return <div className="min-h-screen flex items-center justify-center text-rose-600">{err}</div>;
+  if (error) return <div className="min-h-screen flex items-center justify-center text-rose-600">{error?.message || "Failed to fetch cargo."}</div>;
 
   return (
     <div className="min-h-screen">

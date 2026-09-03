@@ -3,13 +3,9 @@ import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { PiShippingContainerFill } from "react-icons/pi";
 
-import {
-  getShipmentMethods,
-  getPorts,
-  getActiveBranches,
-  getShipmentStatuses
-} from "../../services/coreService";
+import { getActiveBranches } from "../../services/coreService";
 import { getProfile } from "../../services/authService";
+import { useShipmentDropdowns } from "../../hooks/useMasterData";
 import {
   listCargos,
   createCargoShipment,
@@ -129,11 +125,13 @@ function extractBranchInfo(profile, branches = []) {
  * Create Shipment — picker flow with Save (mark-in) & Remove (mark-not)
  * ========================================================================================== */
 export default function CreateShipment() {
+  const { data: dropdowns = {} } = useShipmentDropdowns();
+
   // dropdown data
-  const [shipmentMethods, setShipmentMethods] = useState([]);
-  const [ports, setPorts] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [shipmentStatuses, setShipmentStatuses] = useState([]);
+  const shipmentMethods = dropdowns.methods || [];
+  const ports = dropdowns.ports || [];
+  const shipmentStatuses = dropdowns.statuses || [];
 
   // ---- Redux fallbacks (hooks must be unconditional) ----
   const selBranchId = useSelector((s) => s.branch?.branchId);
@@ -204,17 +202,11 @@ export default function CreateShipment() {
   useEffect(() => {
     (async () => {
       try {
-        const [methods, portList, branchList, statuses, me] = await Promise.all([
-          getShipmentMethods(),
-          getPorts(),
+        const [branchList, me] = await Promise.all([
           getActiveBranches(),
-          getShipmentStatuses(),
           getProfile(),
         ]);
-        setShipmentMethods(unwrapArray(methods));
-        setPorts(unwrapArray(portList));
         setBranches(unwrapArray(branchList));
-        setShipmentStatuses(unwrapArray(statuses));
         setProfileObj(me?.data ?? me ?? null);
       } catch (e) {
        

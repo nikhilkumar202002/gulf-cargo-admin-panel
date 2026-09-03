@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"; 
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux"; 
+import { useQueryClient } from "@tanstack/react-query";
 import toast, { Toaster } from "react-hot-toast";
 
 /* Icons */
@@ -25,6 +26,10 @@ import {
 /* Components */
 import BillModal from "./components/BillModal";
 import EditCargoModal from "./components/EditCargoModal";
+import {
+  cargoDetailKey,
+  cargoDetailStaleTime,
+} from "../../hooks/useCargo";
 
 /* ---------------- HELPERS ---------------- */
 const unwrapArray = (o) =>
@@ -93,6 +98,7 @@ const TableSkeleton = () => (
 
 export default function AllCargoList() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const pageSelectAllRef = useRef(null);
   const hasLoadedCargosRef = useRef(false);
   
@@ -257,6 +263,23 @@ export default function AllCargoList() {
   const navigateToReport = (path) => {
     if (selectedIds.size === 0) return toast.error("Select items first");
     navigate(`/reports/${path}`, { state: { selectedIds: Array.from(selectedIds) } });
+  };
+
+  const prefetchCargo = (cargoId) => {
+    if (!cargoId) return;
+
+    const queryKey = cargoDetailKey(cargoId);
+    const cached = queryClient.getQueryState(queryKey);
+    const isFresh = cached?.dataUpdatedAt &&
+      Date.now() - cached.dataUpdatedAt < cargoDetailStaleTime;
+
+    if (isFresh) return;
+
+    void queryClient.prefetchQuery({
+      queryKey,
+      queryFn: () => getCargoById(cargoId),
+      staleTime: cargoDetailStaleTime,
+    });
   };
 
   return (
@@ -458,6 +481,8 @@ export default function AllCargoList() {
                         <td className="px-4 py-4 align-top text-right">
                            <div className="flex justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                               <button 
+                                onMouseEnter={() => prefetchCargo(c.id)}
+                                onFocus={() => prefetchCargo(c.id)}
                                 onClick={() => navigate(`/cargo/view/${c.id}`)} 
                                 className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                 title="View Details"
