@@ -9,6 +9,27 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 Minutes
 
+let profileValidationRequest = null;
+let profileValidationToken = null;
+
+const validateProfileForToken = (storedToken) => {
+  if (profileValidationRequest && profileValidationToken === storedToken) {
+    return profileValidationRequest;
+  }
+
+  profileValidationToken = storedToken;
+  const request = api.get("/profile");
+  const sharedRequest = request.finally(() => {
+    if (profileValidationRequest === sharedRequest) {
+      profileValidationRequest = null;
+      profileValidationToken = null;
+    }
+  });
+  profileValidationRequest = sharedRequest;
+
+  return profileValidationRequest;
+};
+
 const App = memo(function App() {
   const dispatch = useDispatch();
   const { token, isInitialized } = useSelector((s) => s.auth || {});
@@ -49,7 +70,7 @@ const App = memo(function App() {
         if (storedToken) {
           try {
             api.defaults.headers.Authorization = `Bearer ${storedToken}`;
-            const profileRes = await api.get("/profile");
+            const profileRes = await validateProfileForToken(storedToken);
             const user = profileRes.data?.user || profileRes.data?.data || profileRes.data;
             
             if (user) {

@@ -94,9 +94,10 @@ const TableSkeleton = () => (
 export default function AllCargoList() {
   const navigate = useNavigate();
   const pageSelectAllRef = useRef(null);
+  const hasLoadedCargosRef = useRef(false);
   
   // Redux
-  const { token, user } = useSelector((state) => state.auth || {});
+  const { user } = useSelector((state) => state.auth || {});
 
   const { roleId, roleName } = useMemo(() => {
     const rawRole = user?.role;
@@ -153,7 +154,7 @@ export default function AllCargoList() {
   return () => {
     mounted = false;
   };
-}, [token]);
+}, []);
 
   useEffect(() => {
     writeStoredCargoSelection(Array.from(selectedIds));
@@ -162,8 +163,9 @@ export default function AllCargoList() {
 
   // --- Fetch Cargos ---
   const fetchCargos = useCallback(async (currPage, currFilter) => {
-    if (cargos.length === 0) setIsInitialLoading(true);
-    else setIsFetching(true); 
+    const isFirstRequest = !hasLoadedCargosRef.current;
+    if (isFirstRequest) setIsInitialLoading(true);
+    else setIsFetching(true);
 
     try {
       let response;
@@ -191,12 +193,12 @@ export default function AllCargoList() {
 
     } catch (err) {
       console.error("Fetch error:", err);
-      if (cargos.length === 0) setCargos([]); 
     } finally {
+      hasLoadedCargosRef.current = true;
       setIsInitialLoading(false);
       setIsFetching(false);
     }
-  }, [cargos.length]); 
+  }, []);
 
   const currentPageIds = useMemo(
     () => uniqueCargoIds(cargos.map((cargo) => cargo?.id)),

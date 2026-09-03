@@ -46,6 +46,8 @@ const normalizeBranch = (d = {}) => ({
   start_number: d.start_number ?? d.invoice_start_number ?? "",
 });
 
+let activeBranchesRequest = null;
+
 // Roles Api
 
 export const getRoles = async (params = {}) => {
@@ -114,46 +116,54 @@ export const getBranches = async (params = {}) => {
 };
 
 /* In src/services/coreService.js */
-export const getActiveBranches = async () => {
-  try {
-    const PER_PAGE = 10;
+export const getActiveBranches = () => {
+  if (activeBranchesRequest) return activeBranchesRequest;
 
-    // Page 1
-    const res = await api.get("/branches", {
-      params: { status: 1, per_page: PER_PAGE, page: 1 },
-    });
+  activeBranchesRequest = (async () => {
+    try {
+      const PER_PAGE = 10;
 
-    const raw = unwrap(res);
-    let list = normalizeList(raw);
+      // Page 1
+      const res = await api.get("/branches", {
+        params: { status: 1, per_page: PER_PAGE, page: 1 },
+      });
 
-    const lastPage =
-      raw?.last_page ??
-      raw?.meta?.last_page ??
-      raw?.data?.last_page ??
-      1;
+      const raw = unwrap(res);
+      let list = normalizeList(raw);
 
-    // Remaining pages
-    if (lastPage > 1) {
-      const requests = [];
-      for (let page = 2; page <= lastPage; page++) {
-        requests.push(
-          api.get("/branches", {
-            params: { status: 1, per_page: PER_PAGE, page },
-          })
-        );
+      const lastPage =
+        raw?.last_page ??
+        raw?.meta?.last_page ??
+        raw?.data?.last_page ??
+        1;
+
+      // Remaining pages
+      if (lastPage > 1) {
+        const requests = [];
+        for (let page = 2; page <= lastPage; page++) {
+          requests.push(
+            api.get("/branches", {
+              params: { status: 1, per_page: PER_PAGE, page },
+            })
+          );
+        }
+
+        const responses = await Promise.all(requests);
+        responses.forEach((r) => {
+          list = list.concat(normalizeList(r));
+        });
       }
 
-      const responses = await Promise.all(requests);
-      responses.forEach((r) => {
-        list = list.concat(normalizeList(r));
-      });
+      return list.map(normalizeBranch);
+    } catch (error) {
+      console.error("Error fetching active branches:", error);
+      return [];
     }
+  })().finally(() => {
+    activeBranchesRequest = null;
+  });
 
-    return list.map(normalizeBranch);
-  } catch (error) {
-    console.error("Error fetching active branches:", error);
-    return [];
-  }
+  return activeBranchesRequest;
 };
 
 export const getBranchById = async (id) => {
