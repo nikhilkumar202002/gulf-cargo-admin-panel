@@ -27,7 +27,7 @@ function BillsViews() {
   const [pagination, setPagination] = useState({
     current_page: 1,
     last_page: 1,
-    per_page: 25,
+    per_page: 10,
     total: 0,
   });
   const [uploading, setUploading] = useState(false);
@@ -36,7 +36,7 @@ function BillsViews() {
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
 
-  const pageSize = 25;
+  const pageSize = 10;
 
   /** ---------- small utils ---------- */
   const str = (v) => (v == null ? "" : String(v));

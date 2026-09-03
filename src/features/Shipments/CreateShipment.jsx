@@ -29,6 +29,21 @@ const unwrapArray = (o) =>
 const today = () => new Date().toISOString().slice(0, 10);
 const onlyFree = (rows = []) => rows.filter((r) => Number(r?.is_in_cargo_shipment) === 0);
 
+const pageMeta = (response, requestedPage, pageSize, itemCount) => {
+  const meta =
+    response?.pagination ||
+    response?.meta ||
+    response?.data?.pagination ||
+    response?.data?.meta;
+
+  return {
+    current_page: meta?.current_page ?? requestedPage,
+    last_page: meta?.last_page ?? (itemCount === pageSize ? requestedPage + 1 : requestedPage),
+    per_page: meta?.per_page ?? pageSize,
+    total: meta?.total ?? meta?.total_items ?? itemCount,
+  };
+};
+
 
 const statusPill = (s) => {
   const v = String(s || "").toLowerCase();
@@ -166,6 +181,10 @@ export default function CreateShipment() {
   const [showPicker, setShowPicker] = useState(false);
   const [bookingSearch, setBookingSearch] = useState("");
   const [results, setResults] = useState([]);            // rows rendered in picker table
+  const [freeCargoPage, setFreeCargoPage] = useState(1);
+  const [freeCargoMeta, setFreeCargoMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
+  const [usedCargoPage, setUsedCargoPage] = useState(1);
+  const [usedCargoMeta, setUsedCargoMeta] = useState({ current_page: 1, last_page: 1, per_page: 10, total: 0 });
   const [loadingList, setLoadingList] = useState(false);
   const [savingMarks, setSavingMarks] = useState(false);
   const [dupeNote, setDupeNote] = useState("");
@@ -247,9 +266,11 @@ export default function CreateShipment() {
   const openPicker = async () => {
     setShowPicker(true);
     setBookingSearch("");
+    setFreeCargoPage(1);
+    setUsedCargoPage(1);
     setPickSelectedIds([]);
     setPickSelectedMap({});
-    await fetchPickerRows(); // initial load = free list
+    await fetchPickerRows("", 1, 1); // initial load = first free page
   };
   const closePicker = () => {
     setShowPicker(false);
@@ -272,21 +293,30 @@ export default function CreateShipment() {
   };
 
   // REPLACE your fetchPickerRows with this
-  const fetchPickerRows = async (queryText = "") => {
+  const fetchPickerRows = async (
+    queryText = "",
+    freePageArg = freeCargoPage,
+    usedPageArg = usedCargoPage,
+    section = "both",
+  ) => {
     setLoadingList(true);
     setDupeNote("");
-    setOppositeBucket([]);
+    if (section === "both") setOppositeBucket([]);
     try {
       const hasQuery = !!(queryText && String(queryText).trim());
-      const qlc = String(queryText || "").trim().toLowerCase();
       let tableRows = [];
       let usedRows = [];
 
       if (!hasQuery) {
         // Initial picker / reset: show FREE (0)
         setSearchShowsUsed(false);
-        const resp = await listCargos({ is_in_cargo_shipment: 0 }); // FREE is 0
+        const resp = await listCargos({
+          page: freePageArg,
+          per_page: 25,
+          is_in_cargo_shipment: 0,
+        });
         tableRows = onlyFree(unwrapArray(resp));
+        setFreeCargoMeta(pageMeta(resp, freePageArg, 25, tableRows.length));
         // hide already saved/hidden this session
         const hidden = sessionHiddenIdsRef.current;
         const addedSet = new Set(addedRows.map((r) => Number(r.id)));
@@ -306,28 +336,38 @@ export default function CreateShipment() {
         // SEARCH: show FREE (0) in table, USED (1) in the note
         setSearchShowsUsed(false);
         const [freeResp, usedResp] = await Promise.all([
-          listCargos({ is_in_cargo_shipment: 0, search: queryText }), // FREE is 0
-          listCargos({ is_in_cargo_shipment: 1, search: queryText }), // USED is 1
+          section === "used"
+            ? Promise.resolve(null)
+            : listCargos({
+                page: freePageArg,
+                per_page: 25,
+                search: queryText,
+                is_in_cargo_shipment: 0,
+              }),
+          section === "free"
+            ? Promise.resolve(null)
+            : listCargos({
+                page: usedPageArg,
+                per_page: 10,
+                search: queryText,
+                is_in_cargo_shipment: 1,
+              }),
         ]);
 
 
         // Free rows for the TABLE
-        tableRows = onlyFree(unwrapArray(freeResp)).filter((r) =>
-          String(r?.booking_no || "").toLowerCase().includes(qlc)
-        );
-        // Used rows for the NOTE
-        usedRows = unwrapArray(usedResp).filter((r) =>
-          String(r?.booking_no || "").toLowerCase().includes(qlc)
-        );
-
-        // Fallbacks if backend ignored 'search'
-        if (tableRows.length === 0 && unwrapArray(freeResp).length === 0) {
-          const allFree = onlyFree(unwrapArray(await listCargos({ is_in_cargo_shipment: 0 }))); // 0 here
-          tableRows = allFree.filter((r) => String(r?.booking_no || "").toLowerCase().includes(qlc));
+        if (freeResp) {
+          tableRows = onlyFree(unwrapArray(freeResp));
+          setFreeCargoMeta(pageMeta(freeResp, freePageArg, 25, tableRows.length));
+        } else {
+          tableRows = results;
         }
-        if (usedRows.length === 0 && unwrapArray(usedResp).length === 0) {
-          const allUsed = unwrapArray(await listCargos({ is_in_cargo_shipment: 1 })); // 1 here
-          usedRows = allUsed.filter((r) => String(r?.booking_no || "").toLowerCase().includes(qlc));
+        // Used rows for the NOTE
+        if (usedResp) {
+          usedRows = unwrapArray(usedResp);
+          setUsedCargoMeta(pageMeta(usedResp, usedPageArg, 10, usedRows.length));
+        } else {
+          usedRows = oppositeBucket;
         }
 
         // Table rows = FREE matches minus session-hidden / already-added
@@ -916,14 +956,23 @@ const saveSelectedToList = async () => {
                     />
                     <button
                       type="button"
-                      onClick={() => fetchPickerRows(bookingSearch)}
+                      onClick={() => {
+                        setFreeCargoPage(1);
+                        setUsedCargoPage(1);
+                        fetchPickerRows(bookingSearch, 1, 1);
+                      }}
                       className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
                     >
                       {loadingList ? "Searching…" : "Search"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setBookingSearch(""); fetchPickerRows(""); }}
+                      onClick={() => {
+                        setBookingSearch("");
+                        setFreeCargoPage(1);
+                        setUsedCargoPage(1);
+                        fetchPickerRows("", 1, 1);
+                      }}
                       className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100"
                     >
                       Reset
@@ -1027,6 +1076,74 @@ const saveSelectedToList = async () => {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-gray-50 px-4 py-3 text-sm">
+                  <div className="text-gray-600">
+                    Free Cargo: Page <span className="font-medium">{freeCargoPage}</span> of{" "}
+                    <span className="font-medium">{freeCargoMeta.last_page}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextPage = Math.max(1, freeCargoPage - 1);
+                        setFreeCargoPage(nextPage);
+                        fetchPickerRows(bookingSearch, nextPage, usedCargoPage, "free");
+                      }}
+                      disabled={loadingList || freeCargoPage <= 1}
+                      className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+                    >
+                      Prev
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextPage = Math.min(freeCargoMeta.last_page, freeCargoPage + 1);
+                        setFreeCargoPage(nextPage);
+                        fetchPickerRows(bookingSearch, nextPage, usedCargoPage);
+                      }}
+                      disabled={loadingList || freeCargoPage >= freeCargoMeta.last_page}
+                      className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+
+                {bookingSearch.trim() && usedCargoMeta.last_page > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    <div>
+                      Used Cargo: Page <span className="font-medium">{usedCargoPage}</span> of{" "}
+                      <span className="font-medium">{usedCargoMeta.last_page}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextPage = Math.max(1, usedCargoPage - 1);
+                          setUsedCargoPage(nextPage);
+                          fetchPickerRows(bookingSearch, freeCargoPage, nextPage, "used");
+                        }}
+                        disabled={loadingList || usedCargoPage <= 1}
+                        className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextPage = Math.min(usedCargoMeta.last_page, usedCargoPage + 1);
+                          setUsedCargoPage(nextPage);
+                          fetchPickerRows(bookingSearch, freeCargoPage, nextPage);
+                        }}
+                        disabled={loadingList || usedCargoPage >= usedCargoMeta.last_page}
+                        className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-end gap-3 px-4 py-3 border-t bg-gray-50">
                   <button
