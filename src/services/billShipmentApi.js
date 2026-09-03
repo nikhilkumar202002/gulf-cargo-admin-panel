@@ -6,6 +6,25 @@ const normalizeList = (res) => {
   return Array.isArray(d) ? d : d?.data ?? [];
 };
 
+const attachPagination = (list, res) => {
+  if (!Array.isArray(list)) return list;
+
+  const data = unwrap(res);
+  const meta =
+    data?.pagination ||
+    data?.meta ||
+    data?.data?.pagination ||
+    data?.data?.meta ||
+    (data?.current_page || data?.last_page || data?.total ? data : null);
+
+  if (meta) {
+    list.pagination = meta;
+    list.meta = meta;
+  }
+
+  return list;
+};
+
 let physicalBillsRequest = null;
 
 /* --- PHYSICAL BILLS (Custom Shipments) --- */
@@ -24,7 +43,7 @@ export const getPhysicalBills = async (params = {}, isShipment = null) => {
   const request = () => api.get("/physical-bills", {
     params: query,
     timeout: 45000,
-  }).then(normalizeList);
+  }).then((res) => attachPagination(normalizeList(res), res));
 
   if (!isDefaultList) return request();
   if (!physicalBillsRequest) {

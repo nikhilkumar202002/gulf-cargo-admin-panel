@@ -1,5 +1,5 @@
 // src/pages/PhysicalBills/BillsViews.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Toaster, toast } from "react-hot-toast";
 import {
   getPhysicalBills,
@@ -24,13 +24,19 @@ function BillsViews() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(""); // holds a status NAME from the master list
   const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    per_page: 25,
+    total: 0,
+  });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
 
-  const pageSize = 10;
+  const pageSize = 25;
 
   /** ---------- small utils ---------- */
   const str = (v) => (v == null ? "" : String(v));
@@ -88,13 +94,26 @@ function BillsViews() {
   };
 
   /** ---------- data fetch ---------- */
-  const fetchBills = async () => {
+  const fetchBills = useCallback(async (pageArg = page, queryArg = q) => {
     setLoading(true);
     try {
-      // No is_shipment filter here -> full list view
-      const data = await getPhysicalBills();
+      const data = await getPhysicalBills({
+        page: pageArg,
+        per_page: pageSize,
+        search: queryArg.trim() || undefined,
+      });
       const list = Array.isArray(data) ? data : [];
       setRows(list);
+
+      const meta = data?.pagination || data?.meta;
+      setPagination({
+        current_page: meta?.current_page ?? pageArg,
+        last_page:
+          meta?.last_page ??
+          (list.length === pageSize ? pageArg + 1 : pageArg),
+        per_page: meta?.per_page ?? pageSize,
+        total: meta?.total ?? list.length,
+      });
     } catch (err) {
       console.error(err);
       toast.error(err?.code === "ECONNABORTED" ? "The bills server is taking too long. Please try again." : "Failed to load bills.");
@@ -102,7 +121,7 @@ function BillsViews() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, q, pageSize]);
 
   const [statusList, setStatusList] = useState([]);
   const statusMap = useMemo(() => {
@@ -118,17 +137,6 @@ function BillsViews() {
     const direct = str(r?.status_name || r?.current_status || r?.state).trim();
     return direct || raw || "—";
   };
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!alive) return;
-      await fetchBills();
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -230,35 +238,18 @@ function BillsViews() {
     }
   };
 
-  /** ---------- client-side search & filter ---------- */
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    return rows.filter((r) => {
-      const hitQ =
-        !query ||
-        billNo(r).toLowerCase().includes(query) ||
-        destination(r).toLowerCase().includes(query) ||
-        method(r).toLowerCase().includes(query);
-      const label = statusLabel(r);
-      const hitStatus = !status || label.toLowerCase() === status.toLowerCase();
-      return hitQ && hitStatus;
-    });
-  }, [rows, q, status, statusMap]);
-
-  const totalPages =
-    filtered.length === 0
-      ? 1
-      : Math.max(1, Math.ceil(filtered.length / pageSize));
+  const totalPages = Math.max(1, pagination.last_page || 1);
   const safePage = Math.min(page, totalPages);
-
-  const paged = useMemo(() => {
-    const start = (safePage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, safePage]);
+  const paged = status
+    ? rows.filter((row) => statusLabel(row).toLowerCase() === status.toLowerCase())
+    : rows;
 
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [totalPages, page]);
+    const timer = setTimeout(() => {
+      fetchBills(page, q);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [page, q, status, fetchBills]);
 
   const handleDelete = async (id) => {
     if (!id) return toast.error("Invalid bill ID");
@@ -301,7 +292,7 @@ function BillsViews() {
             <span className="inline-flex items-center rounded-full bg-gradient-to-r from-emerald-50 to-sky-50 border border-slate-200 px-3 py-1 text-sm">
               Total:&nbsp;
               <span className="font-semibold text-slate-800">
-                {rows.length}
+                {pagination.total}
               </span>
             </span>
           </div>
