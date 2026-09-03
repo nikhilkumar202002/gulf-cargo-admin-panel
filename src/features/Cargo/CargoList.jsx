@@ -98,10 +98,25 @@ export default function AllCargoList() {
   // Redux
   const { token, user } = useSelector((state) => state.auth || {});
 
-  const isSuperAdmin = useMemo(() => {
-    const roleId = user?.role_id ?? user?.role?.id ?? user?.role;
-    return String(roleId) === "1";
+  const { roleId, roleName } = useMemo(() => {
+    const rawRole = user?.role;
+    const rawRoleId = user?.role_id ?? user?.roleId ?? (typeof rawRole === "object" ? rawRole?.id : rawRole);
+    const normalizedRoleId = rawRoleId != null && !isNaN(Number(rawRoleId)) ? Number(rawRoleId) : null;
+    const normalizedRoleName =
+      String(
+        user?.role_name ??
+          user?.roleName ??
+          (typeof rawRole === "object" ? rawRole?.name : rawRole ?? "")
+      ).trim().toLowerCase();
+
+    return { roleId: normalizedRoleId, roleName: normalizedRoleName };
   }, [user]);
+
+  const isSuperAdmin = useMemo(() => {
+    return roleId === 1 || roleName === "super admin";
+  }, [roleId, roleName]);
+
+  const canEditCargo = isSuperAdmin || roleName === "admin";
 
   // State
   const [cargos, setCargos] = useState([]);
@@ -466,9 +481,14 @@ export default function AllCargoList() {
                                 <SlEye className="h-4 w-4" />
                               </button>
                               <button 
-                                onClick={() => { setEditingCargoId(c.id); setEditModalOpen(true); }} 
-                                className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                title="Edit Cargo"
+                                onClick={() => {
+                                  if (!canEditCargo) return;
+                                  setEditingCargoId(c.id);
+                                  setEditModalOpen(true);
+                                }} 
+                                disabled={!canEditCargo}
+                                className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-slate-500 disabled:hover:bg-transparent"
+                                title={canEditCargo ? "Edit Cargo" : "Edit Cargo (restricted)"}
                               >
                                 <SlPencil className="h-4 w-4" />
                               </button>

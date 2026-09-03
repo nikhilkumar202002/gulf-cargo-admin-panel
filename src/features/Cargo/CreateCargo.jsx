@@ -1,5 +1,5 @@
 // src/features/Cargo/CreateCargo.jsx
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useImmer } from "use-immer";
 import { useSelector } from "react-redux";
 import {
@@ -39,11 +39,8 @@ import {
   getModalPhoneCodes,
 } from "../../utils/modalFormDataCache";
 
-import InvoiceModal from "../../features/Finance/Invoices/InvoiceModal";
 // import BillModal from "./components/BillModal";
 import "./ShipmentStyles.css";
-import SenderModal from "../CRM/modals/SenderModal";
-import ReceiverModal from "../CRM/modals/ReceiverModal";
 import { Toaster } from "react-hot-toast";
 import { PageHeader } from "./components/PageHeader";
 import { CollectionDetails } from "./components/CollectionDetails";
@@ -51,6 +48,10 @@ import { PartyInfo } from "./components/PartyInfo";
 import { ShipmentDetails } from "./components/ShipmentDetails";
 import { BoxesSection } from "./components/BoxesSection";
 import { ChargesAndSummary } from "./components/ChargesAndSummary";
+
+const InvoiceModal = lazy(() => import("../Finance/Invoices/InvoiceModal"));
+const SenderModal = lazy(() => import("../CRM/modals/SenderModal"));
+const ReceiverModal = lazy(() => import("../CRM/modals/ReceiverModal"));
 
 const DEFAULT_STATUS_ID = 13;
 
@@ -1343,21 +1344,31 @@ const totalItems = boxes.reduce(
         </div>
       </div>
       <Toaster position="top-right" />
-      <SenderModal
-        open={senderOpen}
-        onClose={() => setSenderOpen(false)}
-        onCreated={(data) => onPartyCreated(data, "sender")}
-      />
-      <ReceiverModal
-        open={receiverOpen}
-        onClose={() => setReceiverOpen(false)}
-        onCreated={(data) => onPartyCreated(data, "receiver")}
-      />
-      <InvoiceModal
-        open={invoiceOpen}
-        onClose={() => setInvoiceOpen(false)}
-        shipment={invoiceShipment}
-      />
+      {(senderOpen || receiverOpen || invoiceOpen) && (
+        <Suspense fallback={null}>
+          {senderOpen && (
+            <SenderModal
+              open={senderOpen}
+              onClose={() => setSenderOpen(false)}
+              onCreated={(data) => onPartyCreated(data, "sender")}
+            />
+          )}
+          {receiverOpen && (
+            <ReceiverModal
+              open={receiverOpen}
+              onClose={() => setReceiverOpen(false)}
+              onCreated={(data) => onPartyCreated(data, "receiver")}
+            />
+          )}
+          {invoiceOpen && (
+            <InvoiceModal
+              open={invoiceOpen}
+              onClose={() => setInvoiceOpen(false)}
+              shipment={invoiceShipment}
+            />
+          )}
+        </Suspense>
+      )}
       {/* <BillModal
         open={billModalOpen}
         onClose={() => setBillModalOpen(false)}

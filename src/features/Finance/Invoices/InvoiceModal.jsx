@@ -1,7 +1,6 @@
 // src/pages/InvoiceModal.jsx
 import React from "react";
 import InvoiceView from "../../Finance/Invoices/InvoiceView";
-import html2pdf from "html2pdf.js";
 
 export default function InvoiceModal({ open, onClose, shipment }) {
   if (!open || !shipment) return null;
@@ -9,6 +8,7 @@ export default function InvoiceModal({ open, onClose, shipment }) {
 
   const openPDFInNewTab = async () => {
   const el = document.getElementById("invoice-sheet");
+  const { default: html2pdf } = await import("html2pdf.js");
 
   const opt = {
     margin: 5,
@@ -26,6 +26,7 @@ export default function InvoiceModal({ open, onClose, shipment }) {
 
 const sharePDFOnWhatsApp = async () => {
   const el = document.getElementById("invoice-sheet");
+  const { default: html2pdf } = await import("html2pdf.js");
 
   const opt = {
     margin: 5,
