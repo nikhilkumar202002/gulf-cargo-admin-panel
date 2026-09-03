@@ -10,10 +10,10 @@ import { SlEye, SlPencil, SlDoc } from "react-icons/sl";
 import { FiBox, FiCalendar, FiArrowRight, FiMapPin } from "react-icons/fi";
 import { TbWeight } from "react-icons/tb";
 import { HiOutlineDocumentText } from "react-icons/hi";
+import { useBranches } from "../../hooks/useMasterData";
 
 /* API Services */
 import { listCargos, filterCargosByBookingNo,getCargoById } from "../../services/cargoService";
-import { getActiveBranches } from "../../services/coreService";
 import {
   clearStoredCargoSelection,
   normalizeCargoId,
@@ -136,25 +136,7 @@ export default function AllCargoList() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingCargoId, setEditingCargoId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set(readStoredCargoSelection()));
-  const [branches, setBranches] = useState([]); 
-
-  // --- Initial Master Data Load ---
-  useEffect(() => {
-    let mounted = true;
-
-  (async () => {
-    try {
-      const branchList = await getActiveBranches();
-      if (mounted) setBranches(branchList);
-    } catch (err) {
-      console.error("Failed to load branches:", err);
-    }
-  })();
-
-  return () => {
-    mounted = false;
-  };
-}, []);
+  const { data: branches = [] } = useBranches();
 
   useEffect(() => {
     writeStoredCargoSelection(Array.from(selectedIds));
