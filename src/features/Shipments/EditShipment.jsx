@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from "react";
+/* eslint-disable react-hooks/refs */
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getBillShipmentById, updateBillShipment,getPhysicalBills} from "../../services/billShipmentApi";
 import { getPorts, getShipmentStatuses, getActiveShipmentMethods } from "../../services/coreService";
 import { FaSave, FaTrash, FaPlus, FaTimes } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
+import useUnsavedChangesGuard from "../../hooks/useUnsavedChangesGuard";
+import UnsavedChangesDialog from "../../components/UnsavedChangesDialog";
 
 const fmtDateInput = (iso) => {
   if (!iso) return "";
@@ -17,6 +20,29 @@ const findIdByName = (list, name) => {
   const str = String(name).trim().toLowerCase();
   const found = list.find((item) => String(item.name).trim().toLowerCase() === str);
   return found ? found.id : "";
+};
+
+const getUpdatedShipment = (response, shipmentId) => {
+  const candidates = [
+    response?.shipment,
+    response?.result,
+    response?.payload,
+    response?.data?.shipment,
+    response?.data?.result,
+    response?.data?.payload,
+    response?.data?.data,
+    response?.data,
+    response,
+  ];
+
+  return candidates.find(
+    (candidate) =>
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate) &&
+      candidate.id != null &&
+      String(candidate.id) === String(shipmentId),
+  ) || null;
 };
 
 export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSuccess }) {
@@ -51,6 +77,13 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
   const [ports, setPorts] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [methods, setMethods] = useState([]);
+  const initialSnapshotRef = useRef(null);
+  const currentSnapshot = useMemo(() => ({ formData, attachedBills }), [formData, attachedBills]);
+  const isDirty = useMemo(
+    () => isOpen && !loading && initialSnapshotRef.current && JSON.stringify(currentSnapshot) !== JSON.stringify(initialSnapshotRef.current),
+    [currentSnapshot, isOpen, loading],
+  );
+  const { requestLeave, markCleanAnd, confirmOpen, stay, leave } = useUnsavedChangesGuard({ isDirty, isSaving: saving });
 
   /* -------------------- 1. Load Data -------------------- */
   useEffect(() => {
@@ -83,7 +116,7 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
         const methodId = typeof data.shipping_method === 'object' ? data.shipping_method?.id : findIdByName(methodList, data.shipping_method);
         const statusId = typeof data.status === 'object' ? data.status?.id : findIdByName(statusList, data.status || data.shipment_status);
 
-        setFormData({
+        const nextFormData = {
           shipment_number: data.shipment_number || "",
           awb_or_container_number: data.awb_or_container_number || "",
           license_details: data.license_details || "",
@@ -96,7 +129,8 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
           branch_name: data.branch_name || data.branch?.branch_name || "",
           created_by_name: data.created_by_name || data.created_by?.name || "",
           created_on: fmtDateInput(data.created_on),
-        });
+        };
+        setFormData(nextFormData);
 
         // Load Attached Bills
         const existingRefIds = (data.custom_shipments || []).map(c => Number(c.id));
@@ -105,8 +139,10 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
             const safeList = Array.isArray(allAssigned) ? allAssigned : (allAssigned?.data || []);
             const enrichedBills = safeList.filter(b => existingRefIds.includes(Number(b.id)));
             setAttachedBills(enrichedBills);
+            initialSnapshotRef.current = { formData: nextFormData, attachedBills: enrichedBills };
         } else {
             setAttachedBills([]);
+            initialSnapshotRef.current = { formData: nextFormData, attachedBills: [] };
         }
 
       } catch (err) {
@@ -177,12 +213,16 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
         custom_shipment_ids: attachedBills.map((b) => Number(b.id)),
       };
 
-      await updateBillShipment(shipmentId, payload);
+      const response = await updateBillShipment(shipmentId, payload);
+      const updatedShipment = getUpdatedShipment(response, shipmentId);
       toast.success("Shipment updated successfully!");
 
-      // Close modal and refresh parent list
-      if (onSuccess) onSuccess(); 
-      if (onClose) onClose();
+      // Pass the server record back so the parent can update one row locally.
+      initialSnapshotRef.current = currentSnapshot;
+      markCleanAnd(() => {
+        if (onSuccess) onSuccess(updatedShipment);
+        if (onClose) onClose();
+      });
 
     } catch (err) {
       console.error("Save error details:", err);
@@ -210,6 +250,7 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto flex flex-col relative animate-in fade-in zoom-in-95 duration-200">
         <Toaster position="top-center" />
+        <UnsavedChangesDialog open={confirmOpen} onStay={stay} onLeave={leave} />
 
         {/* Modal Header */}
         <div className="sticky top-0 z-10 bg-white border-b px-6 py-4 flex items-center justify-between">
@@ -217,7 +258,7 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
             Edit Shipment #{formData.shipment_number || shipmentId}
           </h2>
           <button 
-            onClick={onClose} 
+            onClick={() => requestLeave(onClose)}
             className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition"
           >
             <FaTimes size={20} />
@@ -339,7 +380,7 @@ export default function EditShipmentModal({ shipmentId, isOpen, onClose, onSucce
         {/* Modal Footer */}
         <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex justify-end gap-3 rounded-b-xl">
           <button 
-            onClick={onClose}
+            onClick={() => requestLeave(onClose)}
             className="px-5 py-2 rounded-lg border bg-white text-gray-700 hover:bg-gray-100 font-medium transition"
           >
             Cancel

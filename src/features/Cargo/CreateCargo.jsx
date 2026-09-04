@@ -1,4 +1,5 @@
 // src/features/Cargo/CreateCargo.jsx
+/* eslint-disable react-hooks/refs */
 import React, { lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useImmer } from "use-immer";
 import { useSelector } from "react-redux";
@@ -48,6 +49,8 @@ import { PartyInfo } from "./components/PartyInfo";
 import { ShipmentDetails } from "./components/ShipmentDetails";
 import { BoxesSection } from "./components/BoxesSection";
 import { ChargesAndSummary } from "./components/ChargesAndSummary";
+import useUnsavedChangesGuard from "../../hooks/useUnsavedChangesGuard";
+import UnsavedChangesDialog from "../../components/UnsavedChangesDialog";
 
 const InvoiceModal = lazy(() => import("../Finance/Invoices/InvoiceModal"));
 const SenderModal = lazy(() => import("../CRM/modals/SenderModal"));
@@ -198,6 +201,21 @@ export default function CreateCargo() {
   const isLoadingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusTarget, setFocusTarget] = useState(null);
+  const initialSnapshotRef = useRef(null);
+  const pendingCleanRef = useRef(false);
+  const isDirty = useMemo(() => (
+    !loading &&
+    initialSnapshotRef.current &&
+    JSON.stringify({ form, boxes }) !== JSON.stringify(initialSnapshotRef.current)
+  ), [form, boxes, loading]);
+  const { confirmOpen, stay, leave } = useUnsavedChangesGuard({ isDirty, isSaving: isSubmitting });
+
+  useEffect(() => {
+    if (!loading && (!initialSnapshotRef.current || pendingCleanRef.current)) {
+      initialSnapshotRef.current = { form, boxes };
+      pendingCleanRef.current = false;
+    }
+  }, [loading, form, boxes]);
 
  const showToast = useCallback((text, variant = "success", duration = 3500) => {
       try { clearTimeout(toastTimer.current); } catch {}
@@ -846,6 +864,7 @@ const softResetForNext = useCallback((branchId, nextInvoiceNo) => {
         items: [{ name: "", pieces: 1, item_weight: 0 }],
       },
     ]);
+    pendingCleanRef.current = true;
     setInvoiceShipment(null);
     showToast("Form reset.", "success");
   }, [form.branchId, tokenBranchId, showToast, updateForm, updateBoxes]);
@@ -1059,6 +1078,7 @@ const softResetForNext = useCallback((branchId, nextInvoiceNo) => {
         // 6. Reset Form for Next Entry
         const savedNo = res?.booking_no || payload.booking_no;
         const nextNo = incrementInvoiceString(savedNo);
+        pendingCleanRef.current = true;
         softResetForNext(form.branchId, nextNo);
         
         showToast("Cargo created. Invoice ready.", "success");
@@ -1344,6 +1364,7 @@ const totalItems = boxes.reduce(
         </div>
       </div>
       <Toaster position="top-right" />
+      <UnsavedChangesDialog open={confirmOpen} onStay={stay} onLeave={leave} />
       {(senderOpen || receiverOpen || invoiceOpen) && (
         <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30"><div className="rounded-xl bg-white px-5 py-4 text-sm font-medium text-slate-600 shadow-xl" aria-busy="true">Opening dialog...</div></div>}>
           {senderOpen && (

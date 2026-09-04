@@ -262,10 +262,14 @@ export default function ShipmentBillView() {
     setIsEditModalOpen(true);
   };
 
-  const handleEditSuccess = () => {
-    // Ideally refetch single item or whole list, here we reload all for simplicity
-    // Or you could pass the updated object back up from the modal
-    getBillShipments({}).then(data => setRows(unwrapArray(data)));
+  const handleEditSuccess = (updatedShipment) => {
+    if (updatedShipment?.id == null) return;
+
+    setRows((previousRows) =>
+      previousRows.map((row) =>
+        String(row.id) === String(updatedShipment.id) ? updatedShipment : row,
+      ),
+    );
     setIsEditModalOpen(false);
     setEditId(null);
   };

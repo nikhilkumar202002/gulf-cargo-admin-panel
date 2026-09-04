@@ -1,11 +1,13 @@
 // src/pages/PhysicalBills/CreateBills.jsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { LiaFileInvoiceDollarSolid } from "react-icons/lia";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import "./PhysicalBill.css";
 import { createPhysicalBill } from "../../services/billShipmentApi"; // <-- NEW
 import { useShipmentMethods } from "../../hooks/useMasterData";
+import useUnsavedChangesGuard from "../../hooks/useUnsavedChangesGuard";
+import UnsavedChangesDialog from "../../components/UnsavedChangesDialog";
 
 function CreateBills() {
   const FIXED_STATUS = 13; // locked status
@@ -21,6 +23,10 @@ function CreateBills() {
 
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false); // <-- NEW
+  const navigate = useNavigate();
+  const initialForm = useMemo(() => ({ bill_no: "", pcs: "", weight: "", shipment_method: "", destination: "", status: FIXED_STATUS }), []);
+  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initialForm), [form, initialForm]);
+  const { requestLeave, markCleanAnd, confirmOpen, stay, leave } = useUnsavedChangesGuard({ isDirty, isSaving: submitting });
   const { data: methods = [], isLoading: loadingMethods, isError: methodsError } = useShipmentMethods();
   const methodOptions = [
     { id: "", name: methodsError ? "Failed to load methods" : "Select shipment method" },
@@ -103,6 +109,7 @@ function CreateBills() {
         destination: "",
         status: FIXED_STATUS,
       });
+      markCleanAnd();
     } catch (err) {
       // Try to surface backend validation errors if present
       const msg =
@@ -123,6 +130,7 @@ function CreateBills() {
   return (
     <>
       <Toaster position="top-right" /> {/* <-- Toast mount */}
+      <UnsavedChangesDialog open={confirmOpen} onStay={stay} onLeave={leave} />
 
       <section className="physical-invoice">
         <div className="physical-invoice-container max-w-5xl mx-auto my-10">
@@ -137,13 +145,13 @@ function CreateBills() {
             <nav aria-label="Breadcrumb">
               <ol className="flex items-center gap-2 text-sm">
                 <li>
-                  <Link to="/dashboard" className="text-gray-500 hover:text-gray-700 hover:underline">
+                  <Link to="/dashboard" onClick={(e) => { e.preventDefault(); requestLeave(() => navigate("/dashboard")); }} className="text-gray-500 hover:text-gray-700 hover:underline">
                     Home
                   </Link>
                 </li>
                 <li className="text-gray-400">/</li>
                 <li>
-                  <Link to="/cargo/allcargolist" className="text-gray-500 hover:text-gray-700 hover:underline">
+                  <Link to="/cargo/allcargolist" onClick={(e) => { e.preventDefault(); requestLeave(() => navigate("/cargo/allcargolist")); }} className="text-gray-500 hover:text-gray-700 hover:underline">
                     All Physical Bills
                   </Link>
                 </li>

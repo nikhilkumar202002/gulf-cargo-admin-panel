@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from "react";
+/* eslint-disable react-hooks/refs */
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getBillShipmentById, updateBillShipment } from "../../services/billShipmentApi";
 import { getPhysicalBills } from "../../services/billShipmentApi";
 import { getPorts, getShipmentStatuses, getShipmentMethods } from "../../services/coreService";
 import { FaArrowLeft, FaSave, FaTrash, FaPlus } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
+import useUnsavedChangesGuard from "../../hooks/useUnsavedChangesGuard";
+import UnsavedChangesDialog from "../../components/UnsavedChangesDialog";
 
 const fmtDateInput = (iso) => {
   if (!iso) return "";
@@ -23,6 +26,13 @@ export default function EditShipmentBill() {
   const [searchBill, setSearchBill] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const initialSnapshotRef = useRef(null);
+  const currentSnapshot = useMemo(() => ({ formData, attachedBills }), [formData, attachedBills]);
+  const isDirty = useMemo(
+    () => !loading && initialSnapshotRef.current && JSON.stringify(currentSnapshot) !== JSON.stringify(initialSnapshotRef.current),
+    [currentSnapshot, loading],
+  );
+  const { requestLeave, markCleanAnd, confirmOpen, stay, leave } = useUnsavedChangesGuard({ isDirty, isSaving: saving });
 
   const [ports, setPorts] = useState([]);
   const [statuses, setStatuses] = useState([]);
@@ -49,7 +59,7 @@ export default function EditShipmentBill() {
         setStatuses(statusRes);
         setMethods(methodRes);
 
-        setFormData({
+        const nextFormData = {
           shipment_number: data.shipment_number || "",
           awb_or_container_number: data.awb_or_container_number || "",
           license_details: data.license_details || "",
@@ -62,7 +72,8 @@ export default function EditShipmentBill() {
           branch_name: data.branch?.branch_name || "",
           created_by_name: data.created_by?.name || "",
           created_on: fmtDateInput(data.created_on),
-        });
+        };
+        setFormData(nextFormData);
 
         // Extract custom shipment IDs and fetch all bills, then filter client-side
         const customShipmentIds = (data.custom_shipments || []).map((c) => c.id);
@@ -70,8 +81,10 @@ export default function EditShipmentBill() {
           const allBills = await getPhysicalBills();
           const bills = Array.isArray(allBills) ? allBills.filter((bill) => customShipmentIds.includes(bill.id)) : [];
           setAttachedBills(bills);
+          initialSnapshotRef.current = { formData: nextFormData, attachedBills: bills };
         } else {
           setAttachedBills([]);
+          initialSnapshotRef.current = { formData: nextFormData, attachedBills: [] };
         }
       } catch (err) {
         console.error("Error loading shipment:", err);
@@ -162,7 +175,8 @@ export default function EditShipmentBill() {
       };
       await updateBillShipment(id, payload);
       toast.success("Shipment updated successfully!");
-      setTimeout(() => navigate("/bills-shipments/list"), 1000);
+      initialSnapshotRef.current = currentSnapshot;
+      markCleanAnd(() => setTimeout(() => navigate("/bills-shipments/list"), 1000));
     } catch (err) {
       console.error("Save error:", err);
       toast.error("Failed to save shipment.");
@@ -186,11 +200,12 @@ export default function EditShipmentBill() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
       <Toaster position="top-right" />
+      <UnsavedChangesDialog open={confirmOpen} onStay={stay} onLeave={leave} />
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => requestLeave(() => navigate(-1))}
           className="flex items-center gap-2 text-gray-700 hover:text-indigo-600"
         >
           <FaArrowLeft /> Back

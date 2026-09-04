@@ -1,7 +1,10 @@
+/* eslint-disable react-hooks/refs */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { PiShippingContainerFill } from "react-icons/pi";
+import useUnsavedChangesGuard from "../../hooks/useUnsavedChangesGuard";
+import UnsavedChangesDialog from "../../components/UnsavedChangesDialog";
 
 import { getActiveBranches } from "../../services/coreService";
 import { getProfile } from "../../services/authService";
@@ -185,6 +188,25 @@ export default function CreateShipment() {
   const [usedCargoMeta, setUsedCargoMeta] = useState({ current_page: 1, last_page: 1, per_page: 10, total: 0 });
   const [loadingList, setLoadingList] = useState(false);
   const [savingMarks, setSavingMarks] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const initialSnapshotRef = useRef(null);
+  const pendingCleanRef = useRef(false);
+  const isDirty = useMemo(() => (
+    initialSnapshotRef.current &&
+    JSON.stringify({ formData, addedRows }) !== JSON.stringify(initialSnapshotRef.current)
+  ), [formData, addedRows]);
+  const { confirmOpen, stay, leave } = useUnsavedChangesGuard({ isDirty, isSaving: savingMarks || submitting });
+
+  useEffect(() => {
+    if (
+      !initialSnapshotRef.current ||
+      pendingCleanRef.current ||
+      (initialSnapshotRef.current.formData.shipmentStatus === "" && formData.shipmentStatus)
+    ) {
+      initialSnapshotRef.current = { formData, addedRows };
+      pendingCleanRef.current = false;
+    }
+  }, [formData, addedRows]);
   const [dupeNote, setDupeNote] = useState("");
   const [oppositeBucket, setOppositeBucket] = useState([]); // list for the red note
 
@@ -540,6 +562,7 @@ const saveSelectedToList = async () => {
     };
 
     try {
+      setSubmitting(true);
       const committedIds = addedRows.map((r) => Number(r.id));
       await createCargoShipment(payload);
 
@@ -567,6 +590,7 @@ const saveSelectedToList = async () => {
       setDupeNote("");
       setShowPicker(false);
       setAddedRows([]); // fresh list
+      pendingCleanRef.current = true;
       } catch (e2) {
     const is422  = Number(e2?.status) === 422;
     const used   = e2?.details?.already_used_ids;       // ← comes from shipmentCargo.js
@@ -586,6 +610,8 @@ const saveSelectedToList = async () => {
       variant: "error",
       text: e2?.message || e2?.details?.message || "Failed to create shipment."
     });
+  } finally {
+    setSubmitting(false);
   }
 } 
 
@@ -615,6 +641,7 @@ const saveSelectedToList = async () => {
       >
         {toast.text}
       </RightToast>
+      <UnsavedChangesDialog open={confirmOpen} onStay={stay} onLeave={leave} />
 
       <div className="bg-white rounded-lg p-6 border">
         <h2 className="text-xl font-semibold text-gray-800 mb-6 flex gap-2 items-center">
@@ -1179,6 +1206,7 @@ const saveSelectedToList = async () => {
             <button
               type="button"
               onClick={() => {
+                pendingCleanRef.current = true;
                 setFormData({
                   shipmentNumber: "",
                   awbNo: "",

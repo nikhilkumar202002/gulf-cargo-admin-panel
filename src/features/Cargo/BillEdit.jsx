@@ -1,9 +1,12 @@
 // src/pages/PhysicalBills/BillEdit.jsx
-import React, { useEffect, useState } from "react";
+/* eslint-disable react-hooks/refs */
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getCustomShipmentById, updatePhysicalBill } from "../../api/billApi";
 import { Toaster, toast } from "react-hot-toast";
 import { FiSave } from "react-icons/fi";
+import useUnsavedChangesGuard from "../../hooks/useUnsavedChangesGuard";
+import UnsavedChangesDialog from "../../components/UnsavedChangesDialog";
 
 function BillEdit() {
   const { id } = useParams();
@@ -17,19 +20,27 @@ function BillEdit() {
     shipment_method: "",
     destination: "",
   });
+  const initialFormRef = useRef(null);
+  const isDirty = useMemo(
+    () => initialFormRef.current && JSON.stringify(form) !== JSON.stringify(initialFormRef.current),
+    [form],
+  );
+  const { markCleanAnd, confirmOpen, stay, leave } = useUnsavedChangesGuard({ isDirty, isSaving: saving });
 
   useEffect(() => {
     (async () => {
       try {
         const res = await getCustomShipmentById(id);
         const data = res?.data || res;
-        setForm({
+        const nextForm = {
           bill_no: data?.bill_no || "",
           pcs: data?.pcs || "",
           weight: data?.weight || "",
           shipment_method: data?.shipment_method || "",
           destination: data?.destination || "",
-        });
+        };
+        setForm(nextForm);
+        initialFormRef.current = nextForm;
       } catch (err) {
         toast.error("Failed to load bill details");
       } finally {
@@ -49,7 +60,8 @@ function BillEdit() {
     try {
       await updatePhysicalBill(id, form);
       toast.success("Bill updated successfully");
-      navigate("/bills"); // redirect back to list
+      initialFormRef.current = form;
+      markCleanAnd(() => navigate("/bills")); // redirect back to list
     } catch (err) {
       const msg =
         err?.response?.data?.message ||
@@ -72,6 +84,7 @@ function BillEdit() {
   return (
     <section className="mx-auto max-w-3xl px-4 py-8 font-[Inter]">
       <Toaster position="top-right" />
+      <UnsavedChangesDialog open={confirmOpen} onStay={stay} onLeave={leave} />
       <h2 className="text-2xl font-semibold text-slate-900 mb-6">Edit Bill</h2>
 
       <form

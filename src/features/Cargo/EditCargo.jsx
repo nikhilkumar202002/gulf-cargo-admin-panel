@@ -1,11 +1,14 @@
 // src/pages/Cargo/EditCargo.jsx
-import React, { useEffect, useState, useCallback, useRef } from "react";
+/* eslint-disable react-hooks/refs */
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { Toaster, toast } from "react-hot-toast";
 import { RiFileList2Line } from "react-icons/ri";
 import { FiSend, FiUserCheck, FiFileText } from "react-icons/fi";
 import { FaUserPlus } from "react-icons/fa";
+import useUnsavedChangesGuard from "../../hooks/useUnsavedChangesGuard";
+import UnsavedChangesDialog from "../../components/UnsavedChangesDialog";
 
 /* APIs */
 import { getCargoById, updateCargo } from "../../services/cargoService";
@@ -141,6 +144,12 @@ export default function EditCargo({ cargoId: propCargoId, onSaved, onCancel }) {
   const [state, setState] = useState(initialState);
   const itemInputRefs = useRef({});
   const [focusTarget, setFocusTarget] = useState(null);
+  const initialFormRef = useRef(null);
+  const isDirty = useMemo(
+    () => !state.loading && initialFormRef.current && JSON.stringify(state.form) !== JSON.stringify(initialFormRef.current),
+    [state.form, state.loading],
+  );
+  const { requestLeave, markCleanAnd, confirmOpen, stay, leave } = useUnsavedChangesGuard({ isDirty, isSaving: state.saving });
 
   // Store dropdown options
   const [options, setOptions] = useState({
@@ -374,6 +383,7 @@ export default function EditCargo({ cargoId: propCargoId, onSaved, onCancel }) {
         f.items = parsedItems;
         setOptions(loadedOptions);
         setCollectedByOptions(branchStaff); 
+        initialFormRef.current = JSON.parse(JSON.stringify(f));
         setState((s) => ({ ...s, form: f, loading: false }));
 
       } catch (err) {
@@ -631,11 +641,11 @@ export default function EditCargo({ cargoId: propCargoId, onSaved, onCancel }) {
     try {
       await updateCargo(f.id, payload);
       toast.success("Cargo updated successfully");
-      if (onSaved) {
-        onSaved(); 
-      } else {
-        navigate("/cargo/allcargolist", { state: { refresh: true } }); 
-      }
+      initialFormRef.current = JSON.parse(JSON.stringify(state.form));
+      markCleanAnd(() => {
+        if (onSaved) onSaved();
+        else navigate("/cargo/allcargolist", { state: { refresh: true } });
+      });
     } catch (err) {
       console.error(err);
       toast.error(err.response?.data?.message || "Failed to update cargo");
@@ -663,6 +673,7 @@ export default function EditCargo({ cargoId: propCargoId, onSaved, onCancel }) {
   return (
     <div className="min-h-screen bg-gray-50/50 pb-20">
       <Toaster position="top-center" />
+      <UnsavedChangesDialog open={confirmOpen} onStay={stay} onLeave={leave} />
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10 px-6 py-4 mb-6 shadow-sm">
@@ -676,7 +687,7 @@ export default function EditCargo({ cargoId: propCargoId, onSaved, onCancel }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button type="button" onClick={onCancel || (() => navigate(-1))} className="px-5 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors">Cancel</button>
+            <button type="button" onClick={() => requestLeave(onCancel || (() => navigate(-1)))} className="px-5 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors">Cancel</button>
             <button type="button" onClick={onSubmit} disabled={state.saving} className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium shadow-sm transition-colors disabled:opacity-70 flex items-center gap-2">{state.saving ? "Saving..." : "Save Changes"}</button>
           </div>
         </div>
