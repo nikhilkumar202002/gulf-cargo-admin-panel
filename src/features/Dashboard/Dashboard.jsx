@@ -24,7 +24,7 @@ export default function Dashboard() {
     return <div className="flex h-screen items-center justify-center text-red-500">Please log in.</div>;
   }
 
-  // 3. ⚠️ CRITICAL FIX: If we have a token but no user, show loading instead of error
+
   if (token && !user) {
     return (
       <div className="flex h-screen items-center justify-center text-blue-600">

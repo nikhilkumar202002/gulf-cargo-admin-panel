@@ -4,7 +4,6 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getCargoShipment, getCargoById } from "../../../services/cargoService";
 import { getPartyByIdFlexible, findPartyIdByName } from "../../../services/partyService";
 import { readStoredCargoSelection, uniqueCargoIds } from "../../../utils/cargoSelection";
-import * as XLSX from "xlsx";
 
 const DEBUG = false;
 
@@ -440,8 +439,9 @@ export default function DeliveryList() {
     };
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
+      const XLSX = await import("xlsx");
       const data = rows.map((c, idx) => buildExportRow(c, idx));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();

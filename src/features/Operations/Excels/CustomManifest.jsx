@@ -5,7 +5,6 @@ import { getCargoShipment, getCargoById } from "../../../services/cargoService";
 import { getBranchById } from "../../../services/coreService";
 import { getPartyByIdFlexible } from "../../../services/partyService";
 import { readStoredCargoSelection, uniqueCargoIds } from "../../../utils/cargoSelection";
-import * as XLSX from "xlsx";
 
 /* ================= DEBUG ================= */
 const DEBUG = true; 
@@ -364,8 +363,9 @@ export default function ShipmentManifest() {
     };
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
+      const XLSX = await import("xlsx");
       const data = rows.map((c, idx) => buildExportRecord(c, idx));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();

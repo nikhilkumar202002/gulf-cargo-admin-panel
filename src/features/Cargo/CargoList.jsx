@@ -8,7 +8,7 @@ import toast, { Toaster } from "react-hot-toast";
 /* Icons */
 import { GiCargoCrate } from "react-icons/gi";
 import { SlEye, SlPencil, SlDoc } from "react-icons/sl";
-import { FiBox, FiCalendar, FiArrowRight, FiMapPin } from "react-icons/fi";
+import { FiBox, FiCalendar, FiArrowRight, FiMapPin, FiSearch, FiColumns, FiBookmark, FiDownload, FiX } from "react-icons/fi";
 import { TbWeight } from "react-icons/tb";
 import { HiOutlineDocumentText } from "react-icons/hi";
 import { useBranches } from "../../hooks/useMasterData";
@@ -50,6 +50,47 @@ const getStatusStyle = (status) => {
   if (s.includes("cancel")) return "bg-rose-50 text-rose-700 border-rose-200";
   if (s.includes("hold")) return "bg-purple-50 text-purple-700 border-purple-200";
   return "bg-slate-100 text-slate-600 border-slate-200";
+};
+
+const CARGO_VIEW_KEY = "cargo-list-view";
+const CARGO_FILTERS_KEY = "cargo-list-saved-filters";
+const defaultFilter = { bookingNo: "", branchId: "", status: "", date: "" };
+const columns = [
+  { key: "shipment", label: "Shipment Details", sortable: true },
+  { key: "route", label: "Route", sortable: true },
+  { key: "cargo", label: "Cargo Info", sortable: true },
+  { key: "date", label: "Date & Time", sortable: true },
+  { key: "status", label: "Status", sortable: true },
+];
+
+const readCargoView = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CARGO_VIEW_KEY) || "null");
+    return {
+      filter: { ...defaultFilter, ...(saved?.filter || {}) },
+      page: Number(saved?.page) > 0 ? Number(saved.page) : 1,
+      sort: saved?.sort?.key ? saved.sort : { key: "date", direction: "desc" },
+      visibleColumns: saved?.visibleColumns?.length
+        ? saved.visibleColumns
+        : columns.map((column) => column.key),
+    };
+  } catch {
+    return {
+      filter: defaultFilter,
+      page: 1,
+      sort: { key: "date", direction: "desc" },
+      visibleColumns: columns.map((column) => column.key),
+    };
+  }
+};
+
+const readSavedFilters = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CARGO_FILTERS_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
 };
 
 /* ---------------- COMPONENTS ---------------- */
