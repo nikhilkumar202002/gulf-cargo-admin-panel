@@ -12,6 +12,7 @@ import { FiBox, FiCalendar, FiArrowRight, FiMapPin, FiSearch, FiColumns, FiBookm
 import { TbWeight } from "react-icons/tb";
 import { HiOutlineDocumentText } from "react-icons/hi";
 import { useBranches } from "../../hooks/useMasterData";
+import { getApiError } from "../../utils/apiError";
 
 /* API Services */
 import { listCargos, filterCargosByBookingNo,getCargoById } from "../../services/cargoService";
@@ -172,11 +173,18 @@ export default function AllCargoList() {
   
   const [isInitialLoading, setIsInitialLoading] = useState(true); 
   const [isFetching, setIsFetching] = useState(false); 
+  const [cargoError, setCargoError] = useState(null);
   
-  const [filter, setFilter] = useState({ bookingNo: "", branchId: "" });
-  const [page, setPage] = useState(1);
+  const initialView = useMemo(() => readCargoView(), []);
+  const [filter, setFilter] = useState(initialView.filter);
+  const [page, setPage] = useState(initialView.page);
   const [totalPages, setTotalPages] = useState(1);
   const perPage = 10;
+  const [sort, setSort] = useState(initialView.sort);
+  const [visibleColumns, setVisibleColumns] = useState(initialView.visibleColumns);
+  const [savedFilters, setSavedFilters] = useState(() => readSavedFilters());
+  const [showColumns, setShowColumns] = useState(false);
+  const [showSavedFilters, setShowSavedFilters] = useState(false);
   
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [selectedShipment, setSelectedShipment] = useState(null);
@@ -189,12 +197,22 @@ export default function AllCargoList() {
     writeStoredCargoSelection(Array.from(selectedIds));
   }, [selectedIds]);
 
+  useEffect(() => {
+    localStorage.setItem(CARGO_VIEW_KEY, JSON.stringify({ filter, page, sort, visibleColumns }));
+  }, [filter, page, sort, visibleColumns]);
+
+  const updateFilter = (key, value) => {
+    setFilter((prev) => ({ ...prev, [key]: value }));
+    setPage(1);
+  };
+
 
   // --- Fetch Cargos ---
   const fetchCargos = useCallback(async (currPage, currFilter) => {
     const isFirstRequest = !hasLoadedCargosRef.current;
     if (isFirstRequest) setIsInitialLoading(true);
     else setIsFetching(true);
+    setCargoError(null);
 
     try {
       let response;
@@ -209,6 +227,8 @@ export default function AllCargoList() {
           page: currPage,
           per_page: perPage,
           branch_id: currFilter.branchId || undefined, 
+          status: currFilter.status || undefined,
+          date: currFilter.date || undefined,
         };
         response = await listCargos(searchParams);
         fetched = unwrapArray(response);
@@ -222,6 +242,7 @@ export default function AllCargoList() {
 
     } catch (err) {
       console.error("Fetch error:", err);
+      setCargoError(getApiError(err));
     } finally {
       hasLoadedCargosRef.current = true;
       setIsInitialLoading(false);
@@ -241,6 +262,44 @@ export default function AllCargoList() {
 
   const allCurrentPageSelected = currentPageIds.length > 0 && currentPageSelectedCount === currentPageIds.length;
   const someCurrentPageSelected = currentPageSelectedCount > 0 && !allCurrentPageSelected;
+
+  const sortedCargos = useMemo(() => {
+    const valueFor = (cargo) => {
+      if (sort.key === "shipment") return cargo.booking_no || cargo.id || "";
+      if (sort.key === "route") return cargo.sender_name || "";
+      if (sort.key === "cargo") return Number(cargo.total_weight) || 0;
+      if (sort.key === "date") return new Date(cargo.created_at || cargo.date || 0).getTime() || 0;
+      if (sort.key === "status") return cargo.status?.name || cargo.status || "";
+      return "";
+    };
+    return [...cargos].sort((a, b) => {
+      const left = valueFor(a);
+      const right = valueFor(b);
+      const result = typeof left === "number" && typeof right === "number"
+        ? left - right
+        : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+      return sort.direction === "asc" ? result : -result;
+    });
+  }, [cargos, sort]);
+
+  const statusOptions = useMemo(() => {
+    const values = cargos.map((cargo) => cargo.status?.name || cargo.status).filter(Boolean);
+    return [...new Set(values.map((value) => String(value)))].sort();
+  }, [cargos]);
+
+  const toggleColumn = (key) => {
+    setVisibleColumns((current) => {
+      if (current.includes(key) && current.length === 1) return current;
+      return current.includes(key) ? current.filter((column) => column !== key) : [...current, key];
+    });
+  };
+
+  const toggleSort = (key) => {
+    setSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  };
 
   useEffect(() => {
     if (pageSelectAllRef.current) {
@@ -290,9 +349,64 @@ export default function AllCargoList() {
     clearStoredCargoSelection();
   };
 
-  const handleExcelExport = () => {
-     toast.success("Export started in background...");
+  const handleExcelExport = async () => {
+    if (selectedIds.size === 0) return toast.error("Select items first");
+    try {
+      const XLSX = await import("xlsx");
+      const selectedRows = await Promise.all(
+        Array.from(selectedIds).map(async (id) => {
+          const visible = cargos.find((cargo) => normalizeCargoId(cargo.id) === id);
+          return visible || await getCargoById(id);
+        })
+      );
+      const data = selectedRows.map((cargo) => ({
+        "Booking No.": cargo.booking_no || cargo.id || "",
+        Customer: cargo.sender_name || "",
+        Branch: cargo.branch_name || "",
+        Status: cargo.status?.name || cargo.status || "",
+        "Total Weight": cargo.total_weight || "",
+        Date: cargo.date || cargo.created_at || "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Selected Cargo");
+      XLSX.writeFile(wb, "selected_cargo.xlsx");
+      toast.success(`Exported ${data.length} cargo record${data.length === 1 ? "" : "s"}`);
+    } catch (error) {
+      console.error("Cargo export failed:", error);
+      toast.error("Export failed. Please try again.");
+    }
   };
+
+  const saveCurrentFilter = () => {
+    const name = window.prompt("Name this saved filter");
+    if (!name?.trim()) return;
+    const next = [...savedFilters.filter((saved) => saved.name !== name.trim()), { name: name.trim(), filter }];
+    setSavedFilters(next);
+    localStorage.setItem(CARGO_FILTERS_KEY, JSON.stringify(next));
+    toast.success("Filter saved");
+  };
+
+  const applySavedFilter = (saved) => {
+    setFilter({ ...defaultFilter, ...saved.filter });
+    setPage(1);
+    setShowSavedFilters(false);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document.getElementById("cargo-booking-search")?.focus();
+      }
+      if (event.key === "Escape") {
+        setShowColumns(false);
+        setShowSavedFilters(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const reportLinks = [
     { label: "Delivery List", path: "deliverylist" },
@@ -365,11 +479,12 @@ export default function AllCargoList() {
                 <HiOutlineDocumentText className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
             </div>
             <input
+              id="cargo-booking-search"
               type="text"
-              placeholder="Search by Booking Number..."
+              placeholder="Search booking number..."
               className="w-full h-11 rounded-lg bg-transparent border-none pl-10 text-sm focus:ring-0 text-slate-700 placeholder:text-slate-400"
               value={filter.bookingNo}
-              onChange={(e) => setFilter(prev => ({ ...prev, bookingNo: e.target.value }))}
+              onChange={(e) => updateFilter("bookingNo", e.target.value)}
             />
             {isFetching && (
                <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -387,11 +502,70 @@ export default function AllCargoList() {
             <select 
                 className="w-full h-11 rounded-lg bg-transparent border-none pl-10 pr-8 text-sm focus:ring-0 text-slate-700 cursor-pointer"
                 value={filter.branchId}
-                onChange={(e) => setFilter(prev => ({ ...prev, branchId: e.target.value }))}
+                onChange={(e) => updateFilter("branchId", e.target.value)}
             >
                 <option value="">All Branches</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name}</option>)}
             </select>
+          </div>
+
+          <select
+            className="h-11 rounded-lg border-0 bg-transparent px-3 text-sm text-slate-700 focus:ring-0 cursor-pointer"
+            value={filter.status}
+            onChange={(e) => updateFilter("status", e.target.value)}
+            aria-label="Filter by status"
+          >
+            <option value="">All Statuses</option>
+            {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+
+          <input
+            type="date"
+            className="h-11 rounded-lg border-0 bg-transparent px-3 text-sm text-slate-700 focus:ring-0"
+            value={filter.date}
+            onChange={(e) => updateFilter("date", e.target.value)}
+            aria-label="Filter by date"
+          />
+
+          <div className="relative flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowColumns((open) => !open)}
+              className="inline-flex h-10 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-indigo-400 hover:text-indigo-600"
+              title="Choose visible columns"
+            >
+              <FiColumns className="h-4 w-4" /> Columns
+            </button>
+            {showColumns && (
+              <div className="absolute right-0 top-12 z-20 w-52 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Visible columns</p>
+                {columns.map((column) => (
+                  <label key={column.key} className="flex cursor-pointer items-center gap-2 py-1.5 text-sm text-slate-700">
+                    <input type="checkbox" checked={visibleColumns.includes(column.key)} onChange={() => toggleColumn(column.key)} />
+                    {column.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="relative flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowSavedFilters((open) => !open)}
+              className="inline-flex h-10 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-indigo-400 hover:text-indigo-600"
+              title="Saved filters"
+            >
+              <FiBookmark className="h-4 w-4" /> Saved
+            </button>
+            {showSavedFilters && (
+              <div className="absolute right-0 top-12 z-20 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                <button type="button" onClick={saveCurrentFilter} className="mb-2 w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700">Save current filter</button>
+                {savedFilters.length === 0 ? <p className="text-xs text-slate-400">No saved filters yet.</p> : savedFilters.map((saved) => (
+                  <button key={saved.name} type="button" onClick={() => applySavedFilter(saved)} className="block w-full rounded px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50">{saved.name}</button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-2 md:ml-auto">
@@ -405,8 +579,28 @@ export default function AllCargoList() {
             >
               Clear Selection
             </button>
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleExcelExport}
+                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+              >
+                <FiDownload className="h-4 w-4" /> Export selected
+              </button>
+            )}
           </div>
         </div>
+
+        {(filter.bookingNo || filter.branchId || filter.status || filter.date) && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-semibold text-slate-500">Quick status:</span>
+            {["", ...statusOptions].map((status) => (
+              <button key={status || "all"} type="button" onClick={() => updateFilter("status", status)} className={`rounded-full border px-3 py-1.5 font-semibold ${filter.status === status ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300"}`}>
+                {status || "All"}
+              </button>
+            ))}
+            <button type="button" onClick={() => { setFilter(defaultFilter); setPage(1); }} className="ml-auto inline-flex items-center gap-1 text-slate-500 hover:text-rose-600"><FiX /> Clear filters</button>
+          </div>
+        )}
 
         {/* --- Main Table --- */}
         {isInitialLoading ? (
@@ -415,7 +609,7 @@ export default function AllCargoList() {
           <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${isFetching ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
             <div className="overflow-x-auto min-h-[400px]">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase text-[11px] tracking-wider font-semibold">
+                <thead className="sticky top-0 z-10 bg-slate-50/95 border-b border-slate-200 text-slate-500 uppercase text-[11px] tracking-wider font-semibold backdrop-blur">
                   <tr>
                     <th className="px-4 py-4 w-12 text-center">
                       <input 
@@ -426,19 +620,34 @@ export default function AllCargoList() {
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4" 
                       />
                     </th>
-                    <th className="px-4 py-4">Shipment Details</th>
-                    <th className="px-4 py-4">Route</th>
-                    <th className="px-4 py-4">Cargo Info</th>
-                    <th className="px-4 py-4">Date & Time</th>
-                    <th className="px-4 py-4">Status</th>
+                    {columns.map((column) => visibleColumns.includes(column.key) && (
+                      <th key={column.key} className="px-4 py-4">
+                        <button type="button" onClick={() => toggleSort(column.key)} className="inline-flex items-center gap-1 hover:text-indigo-600">
+                          {column.label}
+                          {sort.key === column.key && <span>{sort.direction === "asc" ? "↑" : "↓"}</span>}
+                        </button>
+                      </th>
+                    ))}
                     <th className="px-4 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {cargos.length === 0 ? (
+                  {cargoError ? (
+                    <tr>
+                      <td colSpan="8" className="p-12 text-center">
+                        <div className="mx-auto max-w-md rounded-xl border border-rose-200 bg-rose-50 p-6 text-rose-800">
+                          <p className="font-semibold">Unable to load cargo</p>
+                          <p className="mt-1 text-sm text-rose-700">{cargoError.message}</p>
+                          <button type="button" onClick={() => fetchCargos(page, filter)} className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">
+                            Retry
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : cargos.length === 0 ? (
                     <tr><td colSpan="8" className="p-12 text-center text-slate-400 italic">No shipments found matching your criteria.</td></tr>
                   ) : (
-                    cargos.map((c) => (
+                    sortedCargos.map((c) => (
                       <tr key={c.id} className={`group hover:bg-slate-50 transition-colors duration-150 ${selectedIds.has(normalizeCargoId(c.id)) ? "bg-indigo-50/40" : ""}`}>
                         
                         {/* 1. Checkbox */}
@@ -452,7 +661,7 @@ export default function AllCargoList() {
                         </td>
 
                         {/* 2. Shipment ID + Branch */}
-                        <td className="px-4 py-4 align-top">
+                        {visibleColumns.includes("shipment") && <td className="px-4 py-4 align-top">
                            <div className="flex items-start gap-3">
                               <div className="pt-1">
                                 <span className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-500">
@@ -469,10 +678,10 @@ export default function AllCargoList() {
                                  </div>
                               </div>
                            </div>
-                        </td>
+                        </td>}
 
                         {/* 3. Route (Sender -> Receiver) */}
-                        <td className="px-4 py-4 align-top">
+                        {visibleColumns.includes("route") && <td className="px-4 py-4 align-top">
                            <div className="flex items-center gap-3">
                               <Avatar name={c.sender_name} />
                               <div className="flex flex-col">
@@ -484,10 +693,10 @@ export default function AllCargoList() {
                                  </div>
                               </div>
                            </div>
-                        </td>
+                        </td>}
 
                         {/* 4. Cargo Stats (Boxes & Weight) */}
-                        <td className="px-4 py-4 align-top">
+                        {visibleColumns.includes("cargo") && <td className="px-4 py-4 align-top">
                            <div className="space-y-1.5">
                               <div className="flex items-center gap-2 text-slate-700 text-xs font-medium">
                                  <FiBox className="text-indigo-500 h-3.5 w-3.5" />
@@ -498,10 +707,10 @@ export default function AllCargoList() {
                                  <span>{c.total_weight} kg</span>
                               </div>
                            </div>
-                        </td>
+                        </td>}
 
                         {/* 5. Date */}
-                        <td className="px-4 py-4 align-top">
+                        {visibleColumns.includes("date") && <td className="px-4 py-4 align-top">
                            <div className="flex items-start gap-2 text-slate-600">
                               <FiCalendar className="mt-0.5 h-3.5 w-3.5 text-slate-400" />
                               <div className="flex flex-col text-xs">
@@ -509,14 +718,14 @@ export default function AllCargoList() {
                                  <span className="text-slate-400 mt-0.5">{c.time}</span>
                               </div>
                            </div>
-                        </td>
+                        </td>}
 
                         {/* 6. Status */}
-                        <td className="px-4 py-4 align-top">
+                        {visibleColumns.includes("status") && <td className="px-4 py-4 align-top">
                            <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold border capitalize tracking-wide ${getStatusStyle(c.status?.name || c.status)}`}>
                              {c.status?.name || c.status || "Unknown"}
                            </span>
-                        </td>
+                        </td>}
 
                         {/* 7. Actions */}
                         <td className="px-4 py-4 align-top text-right">

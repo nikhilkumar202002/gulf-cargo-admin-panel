@@ -1345,7 +1345,7 @@ const totalItems = boxes.reduce(
       </div>
       <Toaster position="top-right" />
       {(senderOpen || receiverOpen || invoiceOpen) && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30"><div className="rounded-xl bg-white px-5 py-4 text-sm font-medium text-slate-600 shadow-xl" aria-busy="true">Opening dialog...</div></div>}>
           {senderOpen && (
             <SenderModal
               open={senderOpen}

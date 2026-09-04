@@ -6,6 +6,7 @@ import { RouterProvider } from "react-router-dom";
 import router from "./router/router";
 import api from "./services/axios"; 
 import { useQueryClient } from "@tanstack/react-query";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 Minutes
 
@@ -178,9 +179,11 @@ const App = memo(function App() {
   }, [dispatch, token]);
 
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
-      <RouterProvider router={router} />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 px-6"><div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div className="mx-auto h-10 w-10 animate-pulse rounded-xl bg-indigo-100" aria-hidden="true" /><p className="mt-4 text-sm font-medium text-slate-600">Loading application...</p></div></div>}>
+        <RouterProvider router={router} />
+      </Suspense>
+    </ErrorBoundary>
   );
 });
 

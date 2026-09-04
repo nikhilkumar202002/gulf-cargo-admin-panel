@@ -17,6 +17,7 @@ import {
   FiTrash2,
 } from "react-icons/fi";
 import { useShipmentStatuses } from "../../hooks/useMasterData";
+import { getApiError } from "../../utils/apiError";
 
 function BillsViews() {
   const [rows, setRows] = useState([]);
@@ -24,6 +25,7 @@ function BillsViews() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(""); // holds a status NAME from the master list
   const [uploading, setUploading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const fileInputRef = useRef(null);
 
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -87,6 +89,7 @@ function BillsViews() {
   /** ---------- data fetch ---------- */
   const fetchBills = useCallback(async (queryArg = q) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await getPhysicalBills({
         search: queryArg.trim() || undefined,
@@ -95,8 +98,7 @@ function BillsViews() {
       setRows(list);
     } catch (err) {
       console.error(err);
-      toast.error(err?.code === "ECONNABORTED" ? "The bills server is taking too long. Please try again." : "Failed to load bills.");
-      setRows([]);
+      setLoadError(getApiError(err));
     } finally {
       setLoading(false);
     }
@@ -324,6 +326,14 @@ function BillsViews() {
       </div>
 
       {/* Table */}
+      {loadError && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+          <span>{loadError.message}</span>
+          <button type="button" onClick={() => fetchBills(q)} className="rounded-lg bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-700">
+            Retry
+          </button>
+        </div>
+      )}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -369,10 +379,10 @@ function BillsViews() {
                         <FiInbox className="h-5 w-5" />
                       </div>
                       <div className="font-medium text-slate-700">
-                        No bills found
+                        {loadError ? "Bills could not be loaded" : "No bills found"}
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        Try adjusting your filters or search query.
+                        {loadError ? "Use Retry above to try the request again." : "Try adjusting your filters or search query."}
                       </p>
                     </div>
                   </td>

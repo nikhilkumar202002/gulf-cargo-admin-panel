@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Footer from "./Footer";
@@ -6,6 +6,21 @@ import Footer from "./Footer";
 import "./layout.css";
 import "@fontsource/roboto";
 import { Outlet } from "react-router-dom";
+import ErrorBoundary from "./ErrorBoundary";
+
+const RouteLoading = () => (
+  <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8" aria-busy="true">
+    <div className="w-full max-w-xl space-y-4" aria-hidden="true">
+      <div className="h-8 w-1/3 animate-pulse rounded-lg bg-slate-200" />
+      <div className="h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[1, 2, 3].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
+      </div>
+      <div className="h-40 animate-pulse rounded-xl bg-slate-100" />
+    </div>
+    <span className="mt-5 text-sm font-medium text-slate-500">Loading page...</span>
+  </div>
+);
 
 const Layout = React.memo(function Layout({ userRole }) {
   return (
@@ -15,7 +30,11 @@ const Layout = React.memo(function Layout({ userRole }) {
   <div className="main flex flex-col flex-1 min-w-0 overflow-hidden">
     <Header />
     <main className="content box-border w-full max-w-none flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-5">
-      <Outlet />
+      <ErrorBoundary variant="content">
+        <Suspense fallback={<RouteLoading />}>
+          <Outlet />
+        </Suspense>
+      </ErrorBoundary>
     </main>
     <Footer />
   </div>

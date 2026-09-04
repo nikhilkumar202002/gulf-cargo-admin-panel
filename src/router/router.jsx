@@ -26,10 +26,20 @@ const getRoleInfo = (user) => {
   return { roleId, roleName };
 };
 
+const AuthResolving = () => (
+  <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+    <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm" aria-busy="true">
+      <div className="mx-auto h-10 w-10 animate-pulse rounded-xl bg-indigo-100" aria-hidden="true" />
+      <h1 className="mt-4 text-lg font-semibold text-slate-900">Preparing Gulf Cargo</h1>
+      <p className="mt-2 text-sm text-slate-500">Checking your session...</p>
+    </div>
+  </div>
+);
+
 /* ---------------- guards ---------------- */
 const PrivateRoute = ({ children }) => {
   const { token, isInitialized } = useSelector((s) => s.auth || {});
-  if (!isInitialized) return null;
+  if (!isInitialized) return <AuthResolving />;
   return token ? children : <Navigate to="/login" replace />;
 };
 
@@ -138,7 +148,7 @@ const EditShipment = lazy(() => import("../features/Shipments/EditBillShipment")
 const AuthRedirect = () => {
   const { token, isInitialized } = useSelector((s) => s.auth || {});
   // Show loading or nothing until auth is initialized
-  if (!isInitialized) return null;
+  if (!isInitialized) return <AuthResolving />;
   return token ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />;
 };
 
