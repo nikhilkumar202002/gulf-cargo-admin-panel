@@ -95,7 +95,8 @@ const initialState = {
   user: getUserFromStorage(),
   status: "idle",
   error: null,
-  isInitialized: false,
+  // Anonymous startup needs no asynchronous auth check; stored tokens still validate in App.
+  isInitialized: !localStorage.getItem("token"),
 };
 
 const slice = createSlice({

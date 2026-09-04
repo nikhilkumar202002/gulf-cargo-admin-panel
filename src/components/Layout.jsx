@@ -23,7 +23,7 @@ const RouteLoading = () => (
   </div>
 );
 
-const Layout = React.memo(function Layout({ userRole }) {
+const Layout = React.memo(function Layout({ userRole, authResolving = false }) {
   return (
    <KeyboardShortcutsProvider>
    <div className="app flex h-screen w-full overflow-hidden">
@@ -34,7 +34,7 @@ const Layout = React.memo(function Layout({ userRole }) {
     <main className="content box-border w-full max-w-none flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-5">
       <ErrorBoundary variant="content">
         <Suspense fallback={<RouteLoading />}>
-          <Outlet />
+          {authResolving ? <RouteLoading /> : <Outlet />}
         </Suspense>
       </ErrorBoundary>
     </main>
