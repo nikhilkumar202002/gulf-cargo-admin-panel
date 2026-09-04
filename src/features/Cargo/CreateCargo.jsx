@@ -59,11 +59,26 @@ const ReceiverModal = lazy(() => import("../CRM/modals/ReceiverModal"));
 const DEFAULT_STATUS_ID = 13;
 
 const normalizePartyList = (response) => {
-  const list = unwrapArray(response);
+  const unwrapped = unwrapArray(response);
+  const list = unwrapped.length
+    ? unwrapped
+    : [
+        response?.items,
+        response?.parties,
+        response?.data?.items,
+        response?.data?.parties,
+        response?.data?.data?.items,
+        response?.data?.data?.parties,
+        response?.result?.items,
+        response?.result?.parties,
+        response?.payload?.items,
+        response?.payload?.parties,
+      ]
+      .find(Array.isArray) || [];
   return list
     .map((party) => ({
       ...party,
-      id: idOf(party),
+      id: party?.id ?? party?.party_id ?? party?.partyId ?? party?.uuid ?? idOf(party),
       name:
         party?.name ||
         party?.full_name ||
