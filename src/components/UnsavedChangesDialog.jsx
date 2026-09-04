@@ -1,4 +1,17 @@
+import { useEffect } from "react";
+import useKeyboardShortcuts from "../hooks/useKeyboardShortcuts";
+
 export default function UnsavedChangesDialog({ open, onStay, onLeave }) {
+  const { registerEscape } = useKeyboardShortcuts();
+
+  useEffect(() => {
+    if (!open) return undefined;
+    return registerEscape(() => {
+      onStay();
+      return true;
+    }, 100);
+  }, [open, onStay, registerEscape]);
+
   if (!open) return null;
 
   return (

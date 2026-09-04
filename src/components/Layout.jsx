@@ -7,6 +7,7 @@ import "./layout.css";
 import "@fontsource/roboto";
 import { Outlet } from "react-router-dom";
 import ErrorBoundary from "./ErrorBoundary";
+import { KeyboardShortcutsProvider } from "../hooks/useKeyboardShortcuts";
 
 const RouteLoading = () => (
   <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8" aria-busy="true">
@@ -24,6 +25,7 @@ const RouteLoading = () => (
 
 const Layout = React.memo(function Layout({ userRole }) {
   return (
+   <KeyboardShortcutsProvider>
    <div className="app flex h-screen w-full overflow-hidden">
   <Sidebar userRole={userRole} />
 
@@ -39,6 +41,7 @@ const Layout = React.memo(function Layout({ userRole }) {
     <Footer />
   </div>
 </div>
+   </KeyboardShortcutsProvider>
 
   );
 });

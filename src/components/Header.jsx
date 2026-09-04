@@ -10,6 +10,7 @@ import { logoutUser } from "../store/slices/authSlice";
 import { setBranch as setBranchGlobal, clearBranch } from "../store/slices/branchSlice";
 import { getProfile } from "../services/authService";
 import axios from "../services/axios";
+import useKeyboardShortcuts from "../hooks/useKeyboardShortcuts";
 
 /* skeleton helpers */
 const SkeletonLine = ({ w = 120, h = 16, className = "" }) => (
@@ -29,6 +30,7 @@ const resolveAssetUrl = (u) => {
 export default function Header() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { closeGlobalSearch, isGlobalSearchOpen } = useKeyboardShortcuts();
 
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -46,6 +48,11 @@ export default function Header() {
 
   const dropdownRef = useRef(null);
   const notificationRef = useRef(null);
+  const globalSearchRef = useRef(null);
+
+  useEffect(() => {
+    if (isGlobalSearchOpen) globalSearchRef.current?.focus();
+  }, [isGlobalSearchOpen]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -120,6 +127,20 @@ export default function Header() {
 
   return (
     <>
+      {isGlobalSearchOpen && (
+        <div className="fixed inset-0 z-[1100] flex items-start justify-center bg-slate-950/40 px-4 pt-[12vh]" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) closeGlobalSearch();
+        }}>
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-4 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="global-search-title">
+            <div className="flex items-center justify-between gap-4">
+              <h2 id="global-search-title" className="text-sm font-semibold text-slate-900">Global Search</h2>
+              <button type="button" onClick={closeGlobalSearch} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-100" aria-label="Close global search">Press Esc</button>
+            </div>
+            <input ref={globalSearchRef} type="search" placeholder="Search anything..." aria-label="Search anything" aria-keyshortcuts="Control+K Meta+K" className="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+            <p className="mt-2 text-xs text-slate-500">Global search is ready for future search integration.</p>
+          </div>
+        </div>
+      )}
       {isLoggingOut && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-lg shadow-xl p-6 flex items-center gap-4">

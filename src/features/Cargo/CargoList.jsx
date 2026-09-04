@@ -13,6 +13,7 @@ import { TbWeight } from "react-icons/tb";
 import { HiOutlineDocumentText } from "react-icons/hi";
 import { useBranches } from "../../hooks/useMasterData";
 import { getApiError } from "../../utils/apiError";
+import useKeyboardShortcuts from "../../hooks/useKeyboardShortcuts";
 
 /* API Services */
 import { listCargos, filterCargosByBookingNo,getCargoById } from "../../services/cargoService";
@@ -139,6 +140,8 @@ const TableSkeleton = () => (
 );
 
 export default function AllCargoList() {
+  const { registerEscape, registerPageSearch } = useKeyboardShortcuts();
+  const cargoSearchRef = useRef(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const pageSelectAllRef = useRef(null);
@@ -393,20 +396,19 @@ export default function AllCargoList() {
     setShowSavedFilters(false);
   };
 
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        document.getElementById("cargo-booking-search")?.focus();
-      }
-      if (event.key === "Escape") {
-        setShowColumns(false);
-        setShowSavedFilters(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  useEffect(() => registerPageSearch(() => cargoSearchRef.current?.focus()), [registerPageSearch]);
+
+  useEffect(() => registerEscape(() => {
+    if (showColumns) {
+      setShowColumns(false);
+      return true;
+    }
+    if (showSavedFilters) {
+      setShowSavedFilters(false);
+      return true;
+    }
+    return false;
+  }, 60), [registerEscape, showColumns, showSavedFilters]);
 
   const reportLinks = [
     { label: "Delivery List", path: "deliverylist" },
@@ -479,6 +481,7 @@ export default function AllCargoList() {
                 <HiOutlineDocumentText className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
             </div>
             <input
+              ref={cargoSearchRef}
               id="cargo-booking-search"
               type="text"
               placeholder="Search booking number..."

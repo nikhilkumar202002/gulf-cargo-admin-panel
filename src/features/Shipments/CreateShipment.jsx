@@ -124,32 +124,24 @@ function extractBranchInfo(profile, branches = []) {
   return { id: id != null ? Number(id) : null, name };
 }
 
-/* ============================================================================================
- * Create Shipment — picker flow with Save (mark-in) & Remove (mark-not)
- * ========================================================================================== */
-export default function CreateShipment() {
-  const { data: dropdowns = {} } = useShipmentDropdowns();
 
-  // dropdown data
+export default function CreateShipment() {
+
+  const { data: dropdowns = {} } = useShipmentDropdowns();
   const [branches, setBranches] = useState([]);
   const shipmentMethods = dropdowns.methods || [];
   const ports = dropdowns.ports || [];
   const shipmentStatuses = dropdowns.statuses || [];
-
-  // ---- Redux fallbacks (hooks must be unconditional) ----
   const selBranchId = useSelector((s) => s.branch?.branchId);
   const selAuthUserBranchId = useSelector((s) => s.auth?.user?.branch_id);
   const selAuthProfileBranchId = useSelector((s) => s.auth?.profile?.branch_id);
   const branchFromRedux =
     selBranchId ?? selAuthUserBranchId ?? selAuthProfileBranchId ?? null;
-
   const selBranchName = useSelector((s) => s.branch?.branchName);
   const selAuthUserBranchName = useSelector((s) => s.auth?.user?.branch_name);
   const selAuthProfileBranchName = useSelector((s) => s.auth?.profile?.branch_name);
   const branchNameFromRedux =
     selBranchName ?? selAuthUserBranchName ?? selAuthProfileBranchName ?? "";
-
-  // profile / branch / user
   const [myBranchId, setMyBranchId] = useState(branchFromRedux ?? null);
   const [myBranchName, setMyBranchName] = useState(branchNameFromRedux ?? "");
   const [myUserId, setMyUserId] = useState(null);
@@ -174,14 +166,10 @@ export default function CreateShipment() {
   // toast + server errors
   const [toast, setToast] = useState({ open: false, variant: "success", text: "" });
   const [fieldErrors, setFieldErrors] = useState({});
-
-  // ===== Saved cargos list (added to form before final submit) =====
-  const [addedRows, setAddedRows] = useState([]); // array of cargo objects
-
-  // picker state
+  const [addedRows, setAddedRows] = useState([]); 
   const [showPicker, setShowPicker] = useState(false);
   const [bookingSearch, setBookingSearch] = useState("");
-  const [results, setResults] = useState([]);            // rows rendered in picker table
+  const [results, setResults] = useState([]); 
   const [freeCargoPage, setFreeCargoPage] = useState(1);
   const [freeCargoMeta, setFreeCargoMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
   const [usedCargoPage, setUsedCargoPage] = useState(1);
