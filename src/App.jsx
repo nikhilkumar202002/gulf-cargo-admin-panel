@@ -7,8 +7,10 @@ import router from "./router/router";
 import api from "./services/axios"; 
 import { useQueryClient } from "@tanstack/react-query";
 import ErrorBoundary from "./components/ErrorBoundary";
+import SessionExpiryWarning from "./components/SessionExpiryWarning";
 
 const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 Minutes
+const SESSION_WARNING_THRESHOLD = 5 * 60 * 1000; // 5 Minutes
 
 let profileValidationRequest = null;
 let profileValidationToken = null;
@@ -40,6 +42,11 @@ const App = memo(function App() {
   const idleTimerRef = useRef(null);
   const midnightIntervalRef = useRef(null);
   const bcRef = useRef(null);
+  const inactivityDeadlineRef = useRef(null);
+  const warningVisibleRef = useRef(false);
+  const logoutInProgressRef = useRef(false);
+  const checkDeadlineRef = useRef(null);
+  const [sessionWarning, setSessionWarning] = React.useState({ open: false, deadline: null });
 
   // --- [FIX] Clear React Query Cache on Logout ---
   useEffect(() => {
@@ -119,31 +126,98 @@ const App = memo(function App() {
 
 
   // --- 3. Inactivity Timer (30 Mins) ---
-  const handleUserActivity = useCallback(() => {
-    if (!token) return;
-    
+  const dismissSessionWarning = useCallback(() => {
+    warningVisibleRef.current = false;
+    setSessionWarning({ open: false, deadline: null });
+  }, []);
+
+  const expireSession = useCallback(() => {
+    if (!token || logoutInProgressRef.current) return;
+    logoutInProgressRef.current = true;
+    dismissSessionWarning();
+    dispatch(logoutUser());
+  }, [dispatch, dismissSessionWarning, token]);
+
+  const scheduleInactivityCheck = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    
-    idleTimerRef.current = setTimeout(() => {
-      console.log("User inactive for 30 mins. Logging out.");
-      dispatch(logoutUser());
-      alert("Session expired due to inactivity.");
-    }, INACTIVITY_LIMIT);
-  }, [dispatch, token]);
+    const deadline = inactivityDeadlineRef.current;
+    if (!deadline || !token) return;
+
+    const remaining = deadline - Date.now();
+    const delay = remaining > SESSION_WARNING_THRESHOLD
+      ? remaining - SESSION_WARNING_THRESHOLD
+      : Math.min(Math.max(remaining, 250), 1000);
+    idleTimerRef.current = setTimeout(() => checkDeadlineRef.current?.(), Math.max(250, delay));
+  }, [token]);
+
+  const checkInactivityDeadline = useCallback(() => {
+    if (!token || logoutInProgressRef.current) return;
+
+    const deadline = inactivityDeadlineRef.current;
+    if (!deadline) return;
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      expireSession();
+      return;
+    }
+
+    if (remaining <= SESSION_WARNING_THRESHOLD && !warningVisibleRef.current) {
+      warningVisibleRef.current = true;
+      setSessionWarning({ open: true, deadline });
+    }
+
+    scheduleInactivityCheck();
+  }, [expireSession, scheduleInactivityCheck, token]);
 
   useEffect(() => {
-    if (!token) return;
+    checkDeadlineRef.current = checkInactivityDeadline;
+  }, [checkInactivityDeadline]);
 
-    const events = ["mousedown", "keydown", "scroll", "touchstart"];
-    events.forEach((e) => window.addEventListener(e, handleUserActivity));
+  const resetInactivityDeadline = useCallback(() => {
+    if (!token || logoutInProgressRef.current) return;
+    inactivityDeadlineRef.current = Date.now() + INACTIVITY_LIMIT;
+    dismissSessionWarning();
+    scheduleInactivityCheck();
+  }, [dismissSessionWarning, scheduleInactivityCheck, token]);
 
-    handleUserActivity();
+  const handleUserActivity = useCallback(() => {
+    if (warningVisibleRef.current) return;
+    resetInactivityDeadline();
+  }, [resetInactivityDeadline]);
 
+  useEffect(() => {
+    logoutInProgressRef.current = false;
+    if (!token) {
+      inactivityDeadlineRef.current = null;
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      dismissSessionWarning();
+      return undefined;
+    }
+
+    resetInactivityDeadline();
     return () => {
-      events.forEach((e) => window.removeEventListener(e, handleUserActivity));
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [token, handleUserActivity]);
+  }, [dismissSessionWarning, resetInactivityDeadline, token]);
+
+  useEffect(() => {
+    if (!token) return undefined;
+
+    const events = ["mousedown", "keydown", "scroll", "touchstart"];
+    events.forEach((eventName) => window.addEventListener(eventName, handleUserActivity));
+
+    return () => events.forEach((eventName) => window.removeEventListener(eventName, handleUserActivity));
+  }, [handleUserActivity, token]);
+
+  useEffect(() => {
+    if (!token) return undefined;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") checkDeadlineRef.current?.();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [token]);
 
   // --- 4. Cross-Tab / Single Tab Enforcement ---
   useEffect(() => {
@@ -157,10 +231,12 @@ const App = memo(function App() {
     bc.onmessage = (e) => {
       const { type } = e.data;
       if (type === "LOGOUT") {
+        dismissSessionWarning();
         dispatch(clearAuth());
       }
       if (type === "NEW_TAB_OPENED" && token) {
         console.log("New tab detected. Logging out this instance.");
+        dismissSessionWarning();
         dispatch(clearAuth()); 
       }
     };
@@ -176,11 +252,19 @@ const App = memo(function App() {
       window.removeEventListener("storage", onStorage);
       bc.close();
     };
-  }, [dispatch, token]);
+  }, [dispatch, dismissSessionWarning, token]);
 
   return (
     <ErrorBoundary>
       <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 px-6"><div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div className="mx-auto h-10 w-10 animate-pulse rounded-xl bg-indigo-100" aria-hidden="true" /><p className="mt-4 text-sm font-medium text-slate-600">Loading application...</p></div></div>}>
+        {sessionWarning.open && token && (
+          <SessionExpiryWarning
+            key={sessionWarning.deadline}
+            deadline={sessionWarning.deadline}
+            onContinue={resetInactivityDeadline}
+            onLogout={expireSession}
+          />
+        )}
         <RouterProvider router={router} />
       </Suspense>
     </ErrorBoundary>

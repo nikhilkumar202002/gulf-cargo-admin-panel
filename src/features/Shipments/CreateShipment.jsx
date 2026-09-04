@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/refs */
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
@@ -196,19 +196,12 @@ export default function CreateShipment() {
     }
   }, [formData, addedRows]);
   const [dupeNote, setDupeNote] = useState("");
-  const [oppositeBucket, setOppositeBucket] = useState([]); // list for the red note
-
-  // selection inside picker (temporary)
-  const [pickSelectedIds, setPickSelectedIds] = useState([]); // number[]
-  const [pickSelectedMap, setPickSelectedMap] = useState({}); // id -> row
-
-  // Tracks whether current picker is showing USED (search mode)
+  const [oppositeBucket, setOppositeBucket] = useState([]);
+  const [pickSelectedIds, setPickSelectedIds] = useState([]);
+  const [pickSelectedMap, setPickSelectedMap] = useState({});
   const [searchShowsUsed, setSearchShowsUsed] = useState(false);
-
-  // Track cargos committed/saved this session so they don't reappear if backend flag lags
   const sessionHiddenIdsRef = useRef(new Set());
 
-  /* ---------- bootstrap: fetch dropdowns + profile ---------- */
   useEffect(() => {
     (async () => {
       try {
