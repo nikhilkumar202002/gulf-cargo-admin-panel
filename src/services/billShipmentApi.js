@@ -3,7 +3,13 @@ import api from "./axios";
 const unwrap = (res) => res?.data ?? res;
 const normalizeList = (res) => {
   const d = unwrap(res);
-  return Array.isArray(d) ? d : d?.data ?? [];
+  return Array.isArray(d)
+    ? d
+    : Array.isArray(d?.data)
+      ? d.data
+      : Array.isArray(d?.data?.data)
+        ? d.data.data
+        : [];
 };
 
 const attachPagination = (list, res) => {
@@ -88,7 +94,7 @@ export const createBillShipment = async (payload) => {
 
 export const getBillShipments = async (params = {}) => {
   const res = await api.get("/physical-shipments", { params });
-  return normalizeList(res);
+  return attachPagination(normalizeList(res), res);
 };
 
 export const getBillShipmentById = async (id) => {

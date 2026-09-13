@@ -19,17 +19,21 @@ import {
 import { useShipmentStatuses } from "../../hooks/useMasterData";
 import { getApiError } from "../../utils/apiError";
 
+const PAGE_SIZE = 10;
+
 function BillsViews() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState(""); // holds a status NAME from the master list
+  const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
+  const [pagination, setPagination] = useState({ current_page: 1, per_page: PAGE_SIZE, last_page: 1, total_items: 0 });
+  const [refreshKey, setRefreshKey] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const fileInputRef = useRef(null);
-
-  const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [selectedBill, setSelectedBill] = useState(null);
+  const requestIdRef = useRef(0);
 
   /** ---------- small utils ---------- */
   const str = (v) => (v == null ? "" : String(v));
@@ -81,28 +85,45 @@ function BillsViews() {
     }
   };
 
-  const handleView = (bill) => {
-    setSelectedBill(bill);
-    setViewModalOpen(true);
-  };
-
   /** ---------- data fetch ---------- */
-  const fetchBills = useCallback(async (queryArg = q) => {
+  const fetchBills = useCallback(async (pageArg, queryArg, statusArg) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setLoadError(null);
+    setRows([]);
     try {
       const data = await getPhysicalBills({
+        page: pageArg,
+        per_page: PAGE_SIZE,
         search: queryArg.trim() || undefined,
+        status: statusArg || undefined,
       });
+      if (requestId !== requestIdRef.current) return;
       const list = Array.isArray(data) ? data : [];
+      const meta = data?.pagination || data?.meta;
+      const total = Number(meta?.total_items ?? meta?.total ?? list.length);
+      const lastPage = Math.max(1, Number(meta?.last_page) || Math.ceil(total / PAGE_SIZE));
+      if (pageArg > lastPage) {
+        setPage(lastPage);
+        setPageInput(String(lastPage));
+        return;
+      }
       setRows(list);
+      setPagination({
+        current_page: Number(meta?.current_page) || pageArg,
+        per_page: Number(meta?.per_page) || PAGE_SIZE,
+        last_page: lastPage,
+        total_items: total,
+      });
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       console.error(err);
       setLoadError(getApiError(err));
+      setPagination({ current_page: pageArg, per_page: PAGE_SIZE, last_page: pageArg, total_items: 0 });
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [q]);
+  }, []);
 
   const { data: statusList = [] } = useShipmentStatuses();
   const statusMap = useMemo(() => {
@@ -113,9 +134,9 @@ function BillsViews() {
   }, [statusList]);
 
   const statusLabel = (r) => {
-    const raw = str(r?.status).trim();
+    const raw = str(r?.status?.id ?? r?.status).trim();
     if (raw && statusMap.has(raw)) return statusMap.get(raw);
-    const direct = str(r?.status_name || r?.current_status || r?.state).trim();
+    const direct = str(r?.status?.name || r?.status_name || r?.current_status || r?.state).trim();
     return direct || raw || "—";
   };
 
@@ -148,7 +169,9 @@ function BillsViews() {
       toast.dismiss(tId);
       if (ok) {
         toast.success(msg);
-        await fetchBills();
+        setPage(1);
+        setPageInput("1");
+        setRefreshKey((key) => key + 1);
       } else {
         toast.error(msg || "Import failed.");
       }
@@ -202,16 +225,46 @@ function BillsViews() {
     }
   };
 
-  const filteredRows = status
-    ? rows.filter((row) => statusLabel(row).toLowerCase() === status.toLowerCase())
-    : rows;
-
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchBills(q);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [q, status, fetchBills]);
+      fetchBills(page, q, status);
+    }, q.trim() ? 400 : 0);
+    return () => {
+      clearTimeout(timer);
+      requestIdRef.current += 1;
+    };
+  }, [page, q, status, refreshKey, fetchBills]);
+
+  const searchText = q.trim().toLowerCase();
+  const selectedStatusName = statusMap.get(status)?.toLowerCase();
+  const hasFilters = Boolean(searchText || status);
+  const filteredRows = rows
+    .map((row, index) => ({ row, slno: (pagination.current_page - 1) * pagination.per_page + index + 1 }))
+    .filter(({ row }) => {
+      if (searchText && ![billNo(row), destination(row), method(row)]
+        .some((value) => value.toLowerCase().includes(searchText))) return false;
+
+      if (!status) return true;
+      const rowStatusId = row?.status?.id ?? row?.status_id ?? row?.status;
+      return String(rowStatusId) === status ||
+        (selectedStatusName && statusLabel(row).toLowerCase() === selectedStatusName);
+    });
+
+  const showingFrom = pagination.total_items > 0 && rows.length > 0
+    ? (pagination.current_page - 1) * pagination.per_page + 1
+    : 0;
+  const showingTo = showingFrom ? showingFrom + rows.length - 1 : 0;
+
+  const changePage = (nextPage) => {
+    const requested = Number(nextPage);
+    if (!Number.isInteger(requested)) {
+      setPageInput(String(page));
+      return;
+    }
+    const safePage = Math.min(pagination.last_page, Math.max(1, requested));
+    setPage(safePage);
+    setPageInput(String(safePage));
+  };
 
   const handleDelete = async (id) => {
     if (!id) return toast.error("Invalid bill ID");
@@ -220,8 +273,7 @@ function BillsViews() {
     try {
       const res = await deletePhysicalBill(id);
       toast.success(res?.message || "Bill deleted successfully");
-      // Remove from state to update UI instantly
-      setRows((prevRows) => prevRows.filter((row) => row.id !== id));
+      setRefreshKey((key) => key + 1);
     } catch (error) {
       const msg =
         error?.response?.data?.message ||
@@ -254,7 +306,7 @@ function BillsViews() {
             <span className="inline-flex items-center rounded-full bg-gradient-to-r from-emerald-50 to-sky-50 border border-slate-200 px-3 py-1 text-sm">
               Total:&nbsp;
               <span className="font-semibold text-slate-800">
-                {rows.length}
+                {pagination.total_items}
               </span>
             </span>
           </div>
@@ -275,6 +327,8 @@ function BillsViews() {
                 value={q}
                 onChange={(e) => {
                   setQ(e.target.value);
+                  setPage(1);
+                  setPageInput("1");
                 }}
                 className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 shadow-sm focus:border-sky-300 focus:ring-2 focus:ring-sky-200 transition"
               />
@@ -287,12 +341,14 @@ function BillsViews() {
                 value={status}
                 onChange={(e) => {
                   setStatus(e.target.value);
+                  setPage(1);
+                  setPageInput("1");
                 }}
                 className="appearance-none w-full sm:w-56 rounded-xl border border-slate-200 bg-white pl-10 pr-8 py-2.5 text-sm text-slate-800 shadow-sm focus:border-emerald-300 focus:ring-2 focus:ring-emerald-200 transition"
               >
                 <option value="">All Status</option>
                 {statusList.map((s) => (
-                  <option key={s.id} value={s.name}>
+                  <option key={s.id} value={String(s.id)}>
                     {s.name}
                   </option>
                 ))}
@@ -329,7 +385,7 @@ function BillsViews() {
       {loadError && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
           <span>{loadError.message}</span>
-          <button type="button" onClick={() => fetchBills(q)} className="rounded-lg bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-700">
+          <button type="button" onClick={() => fetchBills(page, q, status)} className="rounded-lg bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-700">
             Retry
           </button>
         </div>
@@ -379,17 +435,16 @@ function BillsViews() {
                         <FiInbox className="h-5 w-5" />
                       </div>
                       <div className="font-medium text-slate-700">
-                        {loadError ? "Bills could not be loaded" : "No bills found"}
+                        {loadError ? "Bills could not be loaded" : hasFilters ? "No matching bills on this page" : "No bills found"}
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        {loadError ? "Use Retry above to try the request again." : "Try adjusting your filters or search query."}
+                        {loadError ? "Use Retry above to try the request again." : hasFilters ? "Try another page or change your filters." : "Try adjusting your filters or search query."}
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((r, idx) => {
-                  const slno = idx + 1;
+                filteredRows.map(({ row: r, slno }) => {
                   const pcsVal = pcs(r);
                   const wtVal = weight(r);
                   const dVal = fmtDate(isoDate(r));
@@ -498,7 +553,65 @@ function BillsViews() {
             </tbody>
           </table>
         </div>
-
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">
+          <span>
+            {hasFilters ? (
+              <>
+                <span className="font-medium">{filteredRows.length}</span> matching bills on this page
+                {" · "}{pagination.total_items} bills reported by API
+              </>
+            ) : (
+              <>
+                Showing <span className="font-medium">{showingFrom}–{showingTo}</span> of{" "}
+                <span className="font-medium">{pagination.total_items}</span> bills
+              </>
+            )}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => changePage(page - 1)}
+              disabled={loading || page <= 1}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <span className="px-1">Page {page} of {pagination.last_page}</span>
+            <button
+              type="button"
+              onClick={() => changePage(page + 1)}
+              disabled={loading || page >= pagination.last_page}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                changePage(pageInput);
+              }}
+              className="flex items-center gap-2"
+            >
+              <label htmlFor="bill-page-number">Go to</label>
+              <input
+                id="bill-page-number"
+                type="number"
+                min="1"
+                max={pagination.last_page}
+                value={pageInput}
+                onChange={(event) => setPageInput(event.target.value)}
+                className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1.5"
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Go
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </section>
   );

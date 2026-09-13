@@ -1,5 +1,5 @@
 // src/features/Shipments/ShipmentBillView.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   getBillShipments,
   updateBillShipmentStatus,
@@ -73,6 +73,8 @@ export default function ShipmentBillView() {
   // Pagination
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, per_page: pageSize, total_items: 0 });
+  const [reloadKey, setReloadKey] = useState(0);
   
   // Selection & Bulk Actions
   const [statuses, setStatuses] = useState([]);
@@ -83,11 +85,9 @@ export default function ShipmentBillView() {
   const [editId, setEditId] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // --- Initial Load ---
+  // --- Status Options ---
   useEffect(() => {
     let mounted = true;
-
-    // 1. Load Status Options
     const loadStatuses = async () => {
       try {
         const res = await getShipmentStatuses();
@@ -97,68 +97,63 @@ export default function ShipmentBillView() {
       }
     };
 
-    // 2. Load All Shipments
+    loadStatuses();
+    return () => { mounted = false; };
+  }, []);
+
+  // Fetch one server page whenever the page or filters change.
+  useEffect(() => {
+    let mounted = true;
     const loadShipments = async () => {
       setLoading(true);
       setErr("");
+      setRows([]);
       try {
-        // Fetching without filters to get ALL data for client-side filtering
-        const data = await getBillShipments({});
+        const data = await getBillShipments({
+          page,
+          per_page: pageSize,
+          ...(q.trim() ? { search: q.trim() } : {}),
+          ...(statusId ? { shipment_status_id: statusId } : {}),
+        });
         const list = unwrapArray(data);
-        if(mounted) setRows(list);
+        if (mounted) {
+          const meta = data?.pagination || data?.meta || data?.data?.pagination || data?.data?.meta;
+          const total = Number(meta?.total_items ?? meta?.total ?? list.length);
+          const lastPage = Math.max(1, Number(meta?.last_page) || Math.ceil(total / pageSize));
+          if (page > lastPage) {
+            setPage(lastPage);
+            return;
+          }
+          setRows(list);
+          setPagination({
+            current_page: Number(meta?.current_page) || page,
+            per_page: Number(meta?.per_page) || pageSize,
+            last_page: lastPage,
+            total_items: total,
+          });
+        }
       } catch (e) {
         if(mounted) {
             setErr(e?.message || "Failed to load shipments.");
             setRows([]);
+            setPagination({ current_page: page, last_page: page, per_page: pageSize, total_items: 0 });
         }
       } finally {
         if(mounted) setLoading(false);
       }
     };
 
-    loadStatuses();
     loadShipments();
 
     return () => { mounted = false; };
-  }, []);
+  }, [page, q, statusId, reloadKey]);
 
-
-  // --- REAL-TIME FILTERING LOGIC ---
-  const filteredRows = useMemo(() => {
-    // Reset page to 1 if user starts typing or changes status
-    if (page !== 1) setPage(1);
-
-    return rows.filter((row) => {
-      // 1. Search Filter (Shipment No, AWB, Ports)
-      if (q) {
-        const lowerQ = q.toLowerCase().trim();
-        const matchesSearch =
-          row.shipment_number?.toLowerCase().includes(lowerQ) ||
-          row.awb_or_container_number?.toLowerCase().includes(lowerQ) ||
-          row?.origin_port?.name?.toLowerCase().includes(lowerQ) ||
-          row?.destination_port?.name?.toLowerCase().includes(lowerQ);
-
-        if (!matchesSearch) return false;
-      }
-
-      // 2. Status Filter
-      if (statusId) {
-        const rowStatusId = row.shipment_status_id || row.status?.id;
-        if (String(rowStatusId) !== String(statusId)) return false;
-      }
-
-      return true;
-    });
-  }, [rows, q, statusId]); // Runs whenever rows, q, or statusId changes
-
-
-  // --- Pagination Logic (Based on filtered results) ---
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  
-  const pageRows = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredRows.slice(start, start + pageSize);
-  }, [filteredRows, page, pageSize]);
+  const pageRows = rows;
+  const totalPages = pagination.last_page;
+  const showingFrom = pagination.total_items > 0 && pageRows.length > 0
+    ? (pagination.current_page - 1) * pagination.per_page + 1
+    : 0;
+  const showingTo = showingFrom ? showingFrom + pageRows.length - 1 : 0;
 
   // --- Selection Logic ---
   const toggleRow = (id, checked) => {
@@ -201,17 +196,7 @@ export default function ShipmentBillView() {
     try {
       await updateBillShipmentStatus(ids, Number(bulkStatusId));
       
-      // Update local state instantly
-      setRows(prevRows => prevRows.map(row => {
-        if (ids.includes(Number(row.id))) {
-          return {
-            ...row,
-            status: targetStatus || row.status, 
-            shipment_status_id: Number(bulkStatusId)
-          };
-        }
-        return row;
-      }));
+      setReloadKey((key) => key + 1);
 
       toast.success(`Updated ${ids.length} shipments to '${statusName}'`);
       setSelectedIds(new Set());
@@ -230,7 +215,12 @@ export default function ShipmentBillView() {
     if (!window.confirm("Are you sure you want to delete this shipment?")) return;
     try {
       await deleteBillShipments([id]);
-      setRows((prevRows) => prevRows.filter((row) => row.id !== id));
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+        next.delete(Number(id));
+        return next;
+      });
+      setReloadKey((key) => key + 1);
       toast.success("Shipment deleted");
     } catch (e) {
       console.error("Delete failed:", e);
@@ -248,8 +238,8 @@ export default function ShipmentBillView() {
     const idsToDelete = [...selectedIds];
     try {
       await deleteBillShipments(idsToDelete);
-      setRows((prevRows) => prevRows.filter((row) => !idsToDelete.includes(Number(row.id))));
       setSelectedIds(new Set());
+      setReloadKey((key) => key + 1);
       toast.success(`Deleted ${idsToDelete.length} shipments`);
     } catch (e) {
       console.error("Bulk delete failed:", e);
@@ -265,11 +255,7 @@ export default function ShipmentBillView() {
   const handleEditSuccess = (updatedShipment) => {
     if (updatedShipment?.id == null) return;
 
-    setRows((previousRows) =>
-      previousRows.map((row) =>
-        String(row.id) === String(updatedShipment.id) ? updatedShipment : row,
-      ),
-    );
+    setReloadKey((key) => key + 1);
     setIsEditModalOpen(false);
     setEditId(null);
   };
@@ -296,7 +282,10 @@ export default function ShipmentBillView() {
             </div>
             <input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPage(1);
+              }}
               placeholder="Filter by Shipment #, AWB, Port..."
               className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:text-sm transition duration-150 ease-in-out"
             />
@@ -306,7 +295,10 @@ export default function ShipmentBillView() {
           <div className="w-full md:w-64">
             <select
               value={statusId}
-              onChange={(e) => setStatusId(e.target.value)}
+              onChange={(e) => {
+                setStatusId(e.target.value);
+                setPage(1);
+              }}
               className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
             >
               <option value="">All Statuses</option>
@@ -410,12 +402,12 @@ export default function ShipmentBillView() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-sm">
-                {!loading && filteredRows.length === 0 && (
+                {!loading && pageRows.length === 0 && (
                   <tr>
                     <td colSpan={11} className="py-12 text-center text-gray-500">
                       <div className="flex flex-col items-center gap-2">
                         <span className="text-2xl opacity-50">🔍</span>
-                        <span>No shipments match your filters.</span>
+                        <span>{err ? "Unable to load shipments." : "No shipments match your filters."}</span>
                       </div>
                     </td>
                   </tr>
@@ -423,7 +415,7 @@ export default function ShipmentBillView() {
 
                 {pageRows.map((r, idx) => {
                     const id = Number(r.id);
-                    const sl = (page - 1) * pageSize + idx + 1;
+                    const sl = (pagination.current_page - 1) * pagination.per_page + idx + 1;
                     const statusName = r?.status?.name || r?.status || "Pending";
                     
                     const boxCount = Array.isArray(r?.custom_shipments)
@@ -507,14 +499,14 @@ export default function ShipmentBillView() {
           {/* Pagination */}
           <div className="flex items-center justify-between px-4 py-3 text-sm text-gray-600 border-t bg-gray-50/50">
             <div>
-              Showing <span className="font-medium">{pageRows.length}</span> of <span className="font-medium">{filteredRows.length}</span> results
+              Showing <span className="font-medium">{showingFrom}–{showingTo}</span> of <span className="font-medium">{pagination.total_items}</span> results
               {err && <span className="text-rose-600 ml-3 font-medium">{err}</span>}
             </div>
             <div className="flex items-center gap-2">
               <button
                 className="px-3 py-1 rounded-md border bg-white hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-white transition shadow-sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
+                disabled={loading || page <= 1}
               >
                 Prev
               </button>
@@ -524,7 +516,7 @@ export default function ShipmentBillView() {
               <button
                 className="px-3 py-1 rounded-md border bg-white hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-white transition shadow-sm"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
+                disabled={loading || page >= totalPages}
               >
                 Next
               </button>
