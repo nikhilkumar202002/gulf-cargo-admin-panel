@@ -92,12 +92,36 @@ function BillsViews() {
     setLoadError(null);
     setRows([]);
     try {
-      const data = await getPhysicalBills({
+      const params = {
         page: pageArg,
         per_page: PAGE_SIZE,
         search: queryArg.trim() || undefined,
-        status: statusArg || undefined,
-      });
+      };
+      let data;
+      if (statusArg) {
+        for (const filterKey of ["status_id", "shipment_status_id"]) {
+          let candidate;
+          try {
+            candidate = await getPhysicalBills({ ...params, [filterKey]: Number(statusArg) });
+          } catch (error) {
+            if ([400, 422].includes(error?.response?.status)) continue;
+            throw error;
+          }
+          if (requestId !== requestIdRef.current) return;
+          const candidateRows = Array.isArray(candidate) ? candidate : [];
+          if (candidateRows.every((bill) => String(bill?.status?.id ?? bill?.status) === String(statusArg))) {
+            data = candidate;
+            break;
+          }
+        }
+        if (!data) {
+          setLoadError({ message: "The bills API did not filter by shipment status. It needs a supported status filter parameter." });
+          setPagination({ current_page: pageArg, per_page: PAGE_SIZE, last_page: pageArg, total_items: 0 });
+          return;
+        }
+      } else {
+        data = await getPhysicalBills(params);
+      }
       if (requestId !== requestIdRef.current) return;
       const list = Array.isArray(data) ? data : [];
       const meta = data?.pagination || data?.meta;
@@ -236,19 +260,11 @@ function BillsViews() {
   }, [page, q, status, refreshKey, fetchBills]);
 
   const searchText = q.trim().toLowerCase();
-  const selectedStatusName = statusMap.get(status)?.toLowerCase();
   const hasFilters = Boolean(searchText || status);
-  const filteredRows = rows
+  const displayRows = rows
     .map((row, index) => ({ row, slno: (pagination.current_page - 1) * pagination.per_page + index + 1 }))
-    .filter(({ row }) => {
-      if (searchText && ![billNo(row), destination(row), method(row)]
-        .some((value) => value.toLowerCase().includes(searchText))) return false;
-
-      if (!status) return true;
-      const rowStatusId = row?.status?.id ?? row?.status_id ?? row?.status;
-      return String(rowStatusId) === status ||
-        (selectedStatusName && statusLabel(row).toLowerCase() === selectedStatusName);
-    });
+    .filter(({ row }) => !searchText || [billNo(row), destination(row), method(row)]
+      .some((value) => value.toLowerCase().includes(searchText)));
 
   const showingFrom = pagination.total_items > 0 && rows.length > 0
     ? (pagination.current_page - 1) * pagination.per_page + 1
@@ -427,7 +443,7 @@ function BillsViews() {
                     ))}
                   </tr>
                 ))
-              ) : filteredRows.length === 0 ? (
+              ) : displayRows.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-500">
@@ -435,16 +451,16 @@ function BillsViews() {
                         <FiInbox className="h-5 w-5" />
                       </div>
                       <div className="font-medium text-slate-700">
-                        {loadError ? "Bills could not be loaded" : hasFilters ? "No matching bills on this page" : "No bills found"}
+                        {loadError ? "Bills could not be loaded" : searchText ? "No matching bills on this page" : hasFilters ? "No matching bills found" : "No bills found"}
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        {loadError ? "Use Retry above to try the request again." : hasFilters ? "Try another page or change your filters." : "Try adjusting your filters or search query."}
+                        {loadError ? "Use Retry above to try the request again." : "Try adjusting your filters or search query."}
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredRows.map(({ row: r, slno }) => {
+                displayRows.map(({ row: r, slno }) => {
                   const pcsVal = pcs(r);
                   const wtVal = weight(r);
                   const dVal = fmtDate(isoDate(r));
@@ -555,9 +571,9 @@ function BillsViews() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">
           <span>
-            {hasFilters ? (
+            {searchText ? (
               <>
-                <span className="font-medium">{filteredRows.length}</span> matching bills on this page
+                <span className="font-medium">{displayRows.length}</span> matching bills on this page
                 {" · "}{pagination.total_items} bills reported by API
               </>
             ) : (

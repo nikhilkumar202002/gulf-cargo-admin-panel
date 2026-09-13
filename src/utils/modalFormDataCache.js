@@ -8,24 +8,41 @@ import {
 
 const TTL = 24 * 60 * 60 * 1000;
 const pending = new Map();
+const memoryCache = new Map();
 
 const getCached = (key) => {
+  const inMemory = memoryCache.get(key);
+  if (inMemory && Date.now() - inMemory.timestamp < TTL) return inMemory.data;
+  memoryCache.delete(key);
+
   try {
     const value = JSON.parse(localStorage.getItem(key) || "null");
-    return value && Date.now() - value.timestamp < TTL ? value.data : null;
+    if (value && Date.now() - value.timestamp < TTL) {
+      memoryCache.set(key, value);
+      return value.data;
+    }
   } catch {
-    return null;
+    // Browser storage may be unavailable; the request can still proceed.
   }
+  return null;
 };
 
-const remember = (key, request) => {
+const remember = (key, request, persist = true) => {
   const cached = getCached(key);
   if (cached) return Promise.resolve(cached);
   if (pending.has(key)) return pending.get(key);
 
   const promise = request()
     .then((data) => {
-      localStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), data }));
+      const value = { timestamp: Date.now(), data };
+      memoryCache.set(key, value);
+      if (persist) {
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch {
+          // A full or disabled storage area must not turn a successful fetch into an error.
+        }
+      }
       return data;
     })
     .finally(() => pending.delete(key));
@@ -54,10 +71,12 @@ export const getModalStates = (countryId) =>
     fetchStatesByCountry(
       countryId,
       { per_page: 100 }
-    )
+    ),
+    false
   );
 
 export const getModalDistricts = (stateId) =>
   remember(`modal_districts_${stateId}`, () =>
-    fetchDistrictsByState(stateId)
+    fetchDistrictsByState(stateId),
+    false
   );
