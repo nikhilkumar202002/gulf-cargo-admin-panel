@@ -27,22 +27,22 @@ const unwrapArray = (o) =>
 
 const statusPill = (s) => {
   const v = String(s || "").toLowerCase();
-  if (v.includes("delivered") || v.includes("completed") || v.includes("received") || v.includes("cleared")) {
-    return "bg-emerald-100 text-emerald-800 border-emerald-200";
+  if (v.includes("not delivered") || v.includes("cancel") || v.includes("rejected") || v.includes("fail") || v.includes("returned")) {
+    return "border-rose-200 bg-rose-50 text-rose-700";
   }
-  if (v.includes("cancel") || v.includes("rejected") || v.includes("fail") || v.includes("returned")) {
-    return "bg-rose-100 text-rose-800 border-rose-200";
+  if (v.includes("delivered") || v.includes("completed") || v.includes("received") || v.includes("cleared")) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
   if (v.includes("pending") || v.includes("draft") || v.includes("new") || v.includes("booked") || v.includes("scheduled")) {
-    return "bg-amber-100 text-amber-800 border-amber-200";
+    return "border-amber-200 bg-amber-50 text-amber-700";
   }
   if (v.includes("transit") || v.includes("shipped") || v.includes("progress") || v.includes("manifest") || v.includes("departed") || v.includes("arrived")) {
-    return "bg-blue-100 text-blue-800 border-blue-200";
+    return "border-sky-200 bg-sky-50 text-sky-700";
   }
   if (v.includes("hold") || v.includes("customs") || v.includes("review") || v.includes("exception")) {
-    return "bg-purple-100 text-purple-800 border-purple-200";
+    return "border-violet-200 bg-violet-50 text-violet-700";
   }
-  return "bg-slate-100 text-slate-800 border-slate-200";
+  return "border-slate-200 bg-slate-50 text-slate-700";
 };
 
 const fmtDateTime = (iso) => {
@@ -168,6 +168,17 @@ export default function ShipmentBillView() {
     ? (pagination.current_page - 1) * pagination.per_page + 1
     : 0;
   const showingTo = showingFrom ? showingFrom + pageRows.length - 1 : 0;
+  const billsOnPage = pageRows.reduce(
+    (total, row) => total + (Array.isArray(row.custom_shipments) ? row.custom_shipments.length : 0),
+    0,
+  );
+  const boxesOnPage = pageRows.reduce(
+    (total, row) => total + (Array.isArray(row.custom_shipments)
+      ? row.custom_shipments.reduce((sum, bill) => sum + (Number(bill.pcs) || 0), 0)
+      : 0),
+    0,
+  );
+  const hasFilters = Boolean(q || statusId);
 
   // --- Selection Logic ---
   const toggleRow = (id, checked) => {
@@ -275,273 +286,251 @@ export default function ShipmentBillView() {
   };
 
   return (
-    <div className="w-full mx-auto px-4 py-5">
+    <main className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-6 text-slate-800 sm:px-6 lg:px-8">
       <Toaster position="top-right" reverseOrder={false} />
-      
-      <div className="flex items-center justify-between mb-3">
+
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-800">Shipments</h2>
-          <div className="text-gray-500">Physical shipments list</div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Operations / Shipments</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Physical shipments</h1>
+          <p className="mt-1 text-sm text-slate-500">Review shipment movement and manage attached bills.</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
+          Total shipments <span className="ml-2 font-semibold tabular-nums text-slate-900">{pagination.total_items.toLocaleString()}</span>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Shipments on this page</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{pageRows.length.toLocaleString()}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Bills on this page</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{billsOnPage.toLocaleString()}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Boxes on this page</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{boxesOnPage.toLocaleString()}</p>
         </div>
       </div>
 
-      {/* --- FILTER BAR --- */}
-      <div className="rounded-xl border bg-white p-3 md:p-4 shadow-sm mb-4">
-        <div className="flex flex-col md:flex-row items-center gap-3">
-          
-          {/* Search Input */}
-          <div className="relative flex-1 w-full">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FaSearch className="text-gray-400" />
+      <section aria-label="Shipment filters and actions" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-end gap-3 p-4 sm:p-5">
+          <div className="min-w-[240px] flex-1">
+            <label htmlFor="shipment-search" className="mb-1.5 block text-xs font-medium text-slate-600">Search shipments</label>
+            <div className="relative">
+              <FaSearch aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                id="shipment-search"
+                type="search"
+                value={q}
+                onChange={(event) => updateListParams({ search: event.target.value, page: 1 })}
+                placeholder="Shipment no, AWB or port"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              />
             </div>
-            <input
-              value={q}
-              onChange={(e) => {
-                updateListParams({ search: e.target.value, page: 1 });
-              }}
-              placeholder="Filter by Shipment #, AWB, Port..."
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:text-sm transition duration-150 ease-in-out"
-            />
           </div>
-
-          {/* Status Dropdown */}
-          <div className="w-full md:w-64">
+          <div className="w-full sm:w-56">
+            <label htmlFor="shipment-status-filter" className="mb-1.5 block text-xs font-medium text-slate-600">Status</label>
             <select
+              id="shipment-status-filter"
               value={statusId}
-              onChange={(e) => {
-                updateListParams({ shipment_status_id: e.target.value, page: 1 });
-              }}
-              className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              onChange={(event) => updateListParams({ shipment_status_id: event.target.value, page: 1 })}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
             >
-              <option value="">All Statuses</option>
-              {statuses.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.name}
-                </option>
-              ))}
+              <option value="">All statuses</option>
+              {statuses.map((item) => <option key={item.id} value={String(item.id)}>{item.name}</option>)}
             </select>
           </div>
-        </div>
-
-        {/* Bulk actions toolbar */}
-        <div className="mt-4 pt-3 border-t flex flex-wrap items-center gap-3 justify-between">
-          <div className="flex items-center gap-4">
-             <div className="text-sm font-medium text-gray-700 bg-gray-100 px-3 py-1.5 rounded-full">
-              {selectedIds.size} Selected
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {/* Bulk Update Group */}
-<div className="flex items-center">
-  <div className={`flex items-center rounded-lg border shadow-sm transition-all duration-200 ${selectedIds.size > 0 ? 'border-indigo-300 bg-indigo-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
-    
-    {/* Label Icon (Optional visual cue) */}
-    <div className="pl-3 pr-1 text-gray-400">
-      <span className="text-xs font-semibold uppercase tracking-wider">Change Status:</span>
-    </div>
-
-    {/* The Select Dropdown */}
-    <select
-      value={bulkStatusId}
-      onChange={(e) => setBulkStatusId(e.target.value)}
-      disabled={selectedIds.size === 0}
-      className="h-9 border-none bg-transparent py-0 pl-2 pr-8 text-sm text-gray-700 focus:ring-0 disabled:cursor-not-allowed"
-    >
-      <option value="">Select...</option>
-      {statuses.map((s) => (
-        <option key={s.id} value={String(s.id)}>
-          {s.name}
-        </option>
-      ))}
-    </select>
-
-    {/* The Action Button (Attached) */}
-    <button
-      onClick={handleBulkUpdate}
-      disabled={!bulkStatusId || selectedIds.size === 0 || savingBulk}
-      className="h-9 border-l border-indigo-100 bg-white px-4 text-sm font-medium text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-white rounded-r-lg transition-colors"
-    >
-      {savingBulk ? "Saving..." : "Update"}
-    </button>
-  </div>
-</div>
-            </div>
-          </div>
-
-          <button
-              onClick={handleBulkDelete}
-              disabled={selectedIds.size === 0}
-              className="px-3 py-1.5 text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={() => updateListParams({ search: "", shipment_status_id: "", page: 1 })}
+              className="h-10 rounded-lg px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
             >
-              Bulk Delete
-          </button>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-        <div className="relative min-h-[200px]">
-          {loading && (
-            <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-20 backdrop-blur-[1px]">
-              <div className="px-4 py-2 rounded-full bg-white shadow-lg border text-gray-600 text-sm font-medium animate-pulse">
-                Loading Data...
-              </div>
-            </div>
+              Clear filters
+            </button>
           )}
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full table-auto">
-              <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm border-b">
-                <tr className="text-left text-xs font-semibold tracking-wide text-gray-500 uppercase">
-                  <th className="py-3 px-3 w-10">
-                    <input
-                      type="checkbox"
-                      checked={allOnPageSelected}
-                      onChange={(e) => toggleSelectAllPage(e.target.checked)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                  </th>
-                  <th className="py-3 px-3">SL</th>
-                  <th className="py-3 px-3">Shipment No</th>
-                  <th className="py-3 px-3">AWB / Container</th>
-                  <th className="py-3 px-3">Origin</th>
-                  <th className="py-3 px-3">Destination</th>
-                  <th className="py-3 px-3">Method</th>
-                  <th className="py-3 px-3 text-center">Boxes</th>
-                  <th className="py-3 px-3">Created</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3 text-center">Action</th>
+        <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3 sm:px-5">
+          {selectedIds.size > 0 ? (
+            <>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">{selectedIds.size} selected</span>
+                <span className="hidden text-xs text-slate-500 sm:inline">Selection is kept across pages</span>
+                <button type="button" onClick={() => setSelectedIds(new Set())} className="text-xs font-medium text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline">Clear selection</button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="bulk-shipment-status" className="sr-only">New shipment status</label>
+                <select
+                  id="bulk-shipment-status"
+                  value={bulkStatusId}
+                  onChange={(event) => setBulkStatusId(event.target.value)}
+                  className="h-9 min-w-40 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                >
+                  <option value="">Change status to...</option>
+                  {statuses.map((item) => <option key={item.id} value={String(item.id)}>{item.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleBulkUpdate}
+                  disabled={!bulkStatusId || savingBulk}
+                  className="h-9 rounded-lg bg-sky-700 px-3 text-sm font-medium text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingBulk ? "Updating..." : "Apply status"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  className="h-9 rounded-lg border border-rose-200 bg-white px-3 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+                >
+                  Delete selected
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">Select shipments to update their status or delete them in bulk.</p>
+          )}
+        </div>
+      </section>
+
+      <section aria-label="Physical shipments list" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Shipment register</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{hasFilters ? "Filtered shipments" : "All physical shipments"} · Page {page} of {totalPages}</p>
+          </div>
+          <span className="text-xs font-medium text-slate-500">{showingFrom}–{showingTo} of {pagination.total_items.toLocaleString()}</span>
+        </div>
+
+        {err && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-700">
+            <span>{err}</span>
+            <button type="button" onClick={() => setReloadKey((key) => key + 1)} className="font-semibold underline underline-offset-2 hover:text-rose-900">Retry</button>
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1120px] w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th scope="col" className="w-12 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all shipments on this page"
+                    checked={allOnPageSelected}
+                    onChange={(event) => toggleSelectAllPage(event.target.checked)}
+                    disabled={loading || pageRows.length === 0}
+                    className="rounded border-slate-300 text-sky-700 focus:ring-sky-500 disabled:opacity-50"
+                  />
+                </th>
+                <th scope="col" className="px-3 py-3">#</th>
+                <th scope="col" className="px-4 py-3">Shipment</th>
+                <th scope="col" className="px-4 py-3">AWB / Container</th>
+                <th scope="col" className="px-4 py-3">Route</th>
+                <th scope="col" className="px-4 py-3">Method</th>
+                <th scope="col" className="px-4 py-3 text-right">Bills / Boxes</th>
+                <th scope="col" className="px-4 py-3">Created</th>
+                <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                Array.from({ length: 5 }, (_, index) => (
+                  <tr key={`loading-${index}`} className="animate-pulse">
+                    {Array.from({ length: 10 }, (_, cell) => (
+                      <td key={cell} className="px-4 py-4"><div className="h-4 rounded bg-slate-100" /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : pageRows.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-6 py-14 text-center">
+                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400"><FaSearch aria-hidden="true" /></div>
+                    <p className="mt-3 font-medium text-slate-800">{err ? "Shipments could not be loaded" : "No shipments found"}</p>
+                    <p className="mt-1 text-sm text-slate-500">{err ? "Use Retry above to load the list again." : "Try a different search or status filter."}</p>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-100 text-sm">
-                {!loading && pageRows.length === 0 && (
-                  <tr>
-                    <td colSpan={11} className="py-12 text-center text-gray-500">
-                      <div className="flex flex-col items-center gap-2">
-                        <span className="text-2xl opacity-50">🔍</span>
-                        <span>{err ? "Unable to load shipments." : "No shipments match your filters."}</span>
+              ) : pageRows.map((row, index) => {
+                const id = Number(row.id);
+                const serial = (pagination.current_page - 1) * pagination.per_page + index + 1;
+                const billCount = Array.isArray(row.custom_shipments) ? row.custom_shipments.length : 0;
+                const boxCount = Array.isArray(row.custom_shipments)
+                  ? row.custom_shipments.reduce((sum, bill) => sum + (Number(bill.pcs) || 0), 0)
+                  : 0;
+                const rawStatus = row?.status?.name ?? row?.status?.id ?? row?.shipment_status_id ?? row?.status;
+                const statusName = statuses.find((item) => String(item.id) === String(rawStatus))?.name
+                  || (typeof rawStatus === "string" || typeof rawStatus === "number" ? String(rawStatus) : "Pending");
+                const checked = selectedIds.has(id);
+
+                return (
+                  <tr key={id} className={`transition-colors hover:bg-slate-50/80 ${checked ? "bg-sky-50/60" : ""}`}>
+                    <td className="px-4 py-3.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select shipment ${row.shipment_number || row.id}`}
+                        checked={checked}
+                        onChange={(event) => toggleRow(id, event.target.checked)}
+                        className="rounded border-slate-300 text-sky-700 focus:ring-sky-500"
+                      />
+                    </td>
+                    <td className="px-3 py-3.5 tabular-nums text-slate-400">{serial}</td>
+                    <td className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/billshipment/${row.id}`, { state: { shipment: row } })}
+                        className="font-semibold text-sky-700 hover:text-sky-900 hover:underline focus:outline-none focus:underline"
+                      >
+                        {row.shipment_number || `Shipment #${row.id}`}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-slate-600">{row.awb_or_container_number || "—"}</td>
+                    <td className="px-4 py-3.5">
+                      <span className="block max-w-44 truncate font-medium text-slate-800" title={row.origin_port?.name || ""}>{row.origin_port?.name || "—"}</span>
+                      <span className="block max-w-44 truncate text-xs text-slate-500" title={row.destination_port?.name || ""}>to {row.destination_port?.name || "—"}</span>
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-600">{row.shipping_method?.name || "—"}</td>
+                    <td className="px-4 py-3.5 text-right">
+                      <span className="block font-semibold tabular-nums text-slate-900">{billCount.toLocaleString()} bills</span>
+                      <span className="block text-xs tabular-nums text-slate-500">{boxCount.toLocaleString()} boxes</span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-xs text-slate-500">{fmtDateTime(row.created_at) || "—"}</td>
+                    <td className="px-4 py-3.5">
+                      <span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${statusPill(statusName)}`}>{statusName}</span>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" title="View" aria-label={`View shipment ${row.shipment_number || row.id}`} onClick={() => navigate(`/billshipment/${row.id}`, { state: { shipment: row } })} className="rounded-lg p-2 text-slate-500 transition hover:bg-sky-50 hover:text-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-200"><FaEye aria-hidden="true" /></button>
+                        <button type="button" title="Edit" aria-label={`Edit shipment ${row.shipment_number || row.id}`} onClick={() => handleEditClick(row.id)} className="rounded-lg p-2 text-slate-500 transition hover:bg-amber-50 hover:text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-200"><FaEdit aria-hidden="true" /></button>
+                        <button type="button" title="Delete" aria-label={`Delete shipment ${row.shipment_number || row.id}`} onClick={() => handleDelete(row.id)} className="rounded-lg p-2 text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-200"><FaTrash aria-hidden="true" /></button>
                       </div>
                     </td>
                   </tr>
-                )}
-
-                {pageRows.map((r, idx) => {
-                    const id = Number(r.id);
-                    const sl = (pagination.current_page - 1) * pagination.per_page + idx + 1;
-                    const statusName = r?.status?.name || r?.status || "Pending";
-                    
-                    const boxCount = Array.isArray(r?.custom_shipments)
-                      ? r.custom_shipments.reduce((acc, bill) => acc + (Number(bill.pcs) || 0), 0)
-                      : 0;
-
-                    const checked = selectedIds.has(id);
-
-                    return (
-                      <tr
-                        key={id}
-                        className={`hover:bg-gray-50 transition-colors ${checked ? 'bg-indigo-50/60' : ''}`}
-                      >
-                        <td className="py-3 px-3">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => toggleRow(id, e.target.checked)}
-                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                        </td>
-                        <td className="py-3 px-3 text-gray-500">{sl}</td>
-                        <td className="py-3 px-3 font-medium text-gray-900">
-                          {r.shipment_number || "—"}
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">
-                          {r.awb_or_container_number || "—"}
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">
-                          {r?.origin_port?.name || "—"}
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">
-                          {r?.destination_port?.name || "—"}
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">
-                          {r?.shipping_method?.name || "—"}
-                        </td>
-                        <td className="py-3 px-3 text-center text-gray-600">{boxCount}</td>
-                        <td className="py-3 px-3 text-gray-500 whitespace-nowrap text-xs">
-                          {fmtDateTime(r.created_at)}
-                        </td>
-                      <td className="py-3 px-3">
-                          <span
-                            className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${statusPill(statusName)}`}
-                          >
-                            {statusName}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          <div className="flex items-center gap-2 justify-center">
-                            <button
-                              title="View"
-                              onClick={() => navigate(`/billshipment/${r.id}`, { state: { shipment: r } })}
-                              className="text-gray-400 hover:text-indigo-600 transition-colors"
-                            >
-                              <FaEye className="w-4 h-4" />
-                            </button>
-                            <button
-                                title="Edit"
-                                onClick={() => handleEditClick(r.id)}
-                                className="text-gray-400 hover:text-amber-600 transition-colors"
-                            >
-                                <FaEdit className="w-4 h-4" />
-                            </button>
-                           <button
-                              title="Delete"
-                              onClick={() => handleDelete(r.id)}
-                              className="text-gray-400 hover:text-red-600 transition-colors"
-                            >
-                              <FaTrash className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          <div className="flex items-center justify-between px-4 py-3 text-sm text-gray-600 border-t bg-gray-50/50">
-            <div>
-              Showing <span className="font-medium">{showingFrom}–{showingTo}</span> of <span className="font-medium">{pagination.total_items}</span> results
-              {err && <span className="text-rose-600 ml-3 font-medium">{err}</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="px-3 py-1 rounded-md border bg-white hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-white transition shadow-sm"
-                onClick={() => updateListParams({ page: Math.max(1, page - 1) }, false)}
-                disabled={loading || page <= 1}
-              >
-                Prev
-              </button>
-              <div className="px-2 font-medium">
-                  {page} / {totalPages}
-              </div>
-              <button
-                className="px-3 py-1 rounded-md border bg-white hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-white transition shadow-sm"
-                onClick={() => updateListParams({ page: Math.min(totalPages, page + 1) }, false)}
-                disabled={loading || page >= totalPages}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
-      <EditShipmentModal 
+
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 text-sm text-slate-600">
+          <span>Showing <strong className="font-medium tabular-nums text-slate-900">{showingFrom}–{showingTo}</strong> of <strong className="font-medium tabular-nums text-slate-900">{pagination.total_items.toLocaleString()}</strong> shipments</span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => updateListParams({ page: Math.max(1, page - 1) }, false)} disabled={loading || page <= 1} className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+            <span className="min-w-20 text-center font-medium tabular-nums">{page} / {totalPages}</span>
+            <button type="button" onClick={() => updateListParams({ page: Math.min(totalPages, page + 1) }, false)} disabled={loading || page >= totalPages} className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+          </div>
+        </footer>
+      </section>
+
+      <EditShipmentModal
         shipmentId={editId}
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         onSuccess={handleEditSuccess}
       />
-    </div>
+    </main>
   );
 }

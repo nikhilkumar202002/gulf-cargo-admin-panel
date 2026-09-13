@@ -35,10 +35,10 @@ const formatStatus = (status) => {
 };
 const getStatusStyle = (status) => {
   const s = formatStatus(status).toLowerCase();
-  if (s.includes("waiting") || s.includes("hold") || s.includes("not delivered")) return "bg-red-100 text-red-800 border-red-300";
-  if (s.includes("delivered") || s.includes("cleared")) return "bg-green-100 text-green-800 border-green-300";
-  if (s.includes("forwarded") || s.includes("arrived") || s.includes("out")) return "bg-blue-100 text-blue-800 border-blue-300";
-  return "bg-amber-100 text-amber-800 border-amber-300";
+  if (s.includes("waiting") || s.includes("hold") || s.includes("not delivered")) return "border-rose-200 bg-rose-50 text-rose-700";
+  if (s.includes("delivered") || s.includes("cleared")) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (s.includes("forwarded") || s.includes("arrived") || s.includes("out")) return "border-sky-200 bg-sky-50 text-sky-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
 };
 
 const hasBillDetails = (bill) =>
@@ -142,140 +142,132 @@ export default function BillshipmentSingle() {
     return bills.reduce((sum, b) => sum + (Number(b.pcs) || 0), 0);
   }, [bills]);
 
-  if (loading) return <div className="p-10 text-center">Loading...</div>;
-  if (error) return <div className="p-10 text-center text-red-600">{error}</div>;
+  if (loading) {
+    return <div className="mx-auto max-w-7xl rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">Loading shipment...</div>;
+  }
+  if (error) {
+    return (
+      <div className="mx-auto max-w-7xl rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm" role="alert">
+        <p className="text-rose-700">{error}</p>
+        <button type="button" onClick={() => navigate(-1)} className="mt-4 text-sm font-medium text-slate-700 underline hover:text-slate-900">Back to shipments</button>
+      </div>
+    );
+  }
+
+  const showingFrom = bills.length ? (page - 1) * pageSize + 1 : 0;
+  const showingTo = bills.length ? Math.min(page * pageSize, bills.length) : 0;
 
   return (
-    <div className="w-full mx-auto space-y-5">
-
-      {/* --- TOP HIGHLIGHT PANEL --- */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-700 text-white rounded-2xl shadow-xl p-8">
-
-        <button onClick={() => navigate(-1)} className="text-white/70 hover:text-white flex items-center gap-2 mb-5">
-          <FaArrowLeft /> Back
+    <main className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 text-slate-800 sm:px-6 lg:px-8">
+      <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="mb-6 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-200"
+        >
+          <FaArrowLeft aria-hidden="true" className="h-3 w-3" /> Back to shipments
         </button>
 
-        {/* Shipment Number Highlight */}
-        <div className="text-4xl font-bold mb-4 tracking-tight">
-          Shipment&nbsp; 
-          <span className="text-amber-400">
-            #{shipment.shipment_number || shipment.id}
-          </span>
-        </div>
-
-        {/* Container / AWB Number */}
-        <div className="text-xl font-semibold flex gap-2 items-center">
-          <span className="px-4 py-2 bg-white/10 rounded-lg border border-white/20">
-            AWB / Container:{" "}
-            <span className="text-amber-300 font-bold">
-              {shipment.awb_or_container_number || "—"}
-            </span>
-          </span>
-
-          {/* Status */}
-          <span
-            className={`px-4 py-2 rounded-full text-sm font-bold border ml-auto ${getStatusStyle(
-              shipment.status
-            )}`}
-          >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Physical shipment</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+              Shipment <span className="text-sky-700">#{shipment.shipment_number || shipment.id}</span>
+            </h1>
+            <p className="mt-2 text-sm text-slate-500">Shipment details and attached physical bills</p>
+          </div>
+          <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${getStatusStyle(shipment.status)}`}>
             {formatStatus(shipment.status)}
           </span>
         </div>
-      </div>
 
-      {/* --- DETAILS GRID --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-8 shadow-lg rounded-2xl border">
-        <Detail label="Origin" value={shipment.origin_port?.name || shipment.origin_port} />
-        <Detail label="Destination" value={shipment.destination_port?.name || shipment.destination_port} />
-        <Detail label="Shipping Method" value={shipment.shipping_method?.name || shipment.shipping_method} />
-        <Detail label="Branch" value={shipment.branch?.branch_name || shipment.branch_name} />
-      </div>
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500">AWB / Container</span>
+          <p className="mt-1 break-all text-base font-semibold text-slate-900">{shipment.awb_or_container_number || "—"}</p>
+        </div>
+      </header>
 
-      {/* --- PHYSICAL BILLS TABLE --- */}
-      <div className="bg-white border rounded-2xl shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Physical Bills</h2>
-          
-          <div className="flex gap-2">
-            <span className="px-4 py-1.5 bg-white border rounded-full text-gray-700 text-sm">
-                Total Bills: <strong>{bills.length}</strong>
-            </span>
-            <span className="px-4 py-1.5 bg-white border rounded-full text-gray-700 text-sm">
-                Total Boxes: <strong>{totalBoxes}</strong>
-            </span>
+      <section aria-labelledby="shipment-details-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <h2 id="shipment-details-title" className="text-lg font-semibold text-slate-900">Shipment details</h2>
+        <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Detail label="Origin" value={shipment.origin_port?.name || shipment.origin_port} />
+          <Detail label="Destination" value={shipment.destination_port?.name || shipment.destination_port} />
+          <Detail label="Shipping method" value={shipment.shipping_method?.name || shipment.shipping_method} />
+          <Detail label="Branch" value={shipment.branch?.name || shipment.branch?.branch_name || shipment.branch_name} />
+        </dl>
+      </section>
+
+      <section aria-labelledby="physical-bills-title" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-5 py-5 sm:px-6">
+          <div>
+            <h2 id="physical-bills-title" className="text-lg font-semibold text-slate-900">Physical bills</h2>
+            <p className="mt-1 text-sm text-slate-500">Bills attached to this shipment</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-sm">
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-600">Total bills <strong className="ml-1 text-slate-900">{bills.length}</strong></span>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-600">Total boxes <strong className="ml-1 text-slate-900">{totalBoxes}</strong></span>
           </div>
         </div>
 
-        <table className="min-w-full table-auto text-sm">
-          <thead className="bg-gray-100 text-gray-700 text-xs uppercase">
-            <tr>
-              <Th>SL</Th>
-              <Th>Invoice No</Th>
-              <Th>Pcs</Th>
-              <Th>Weight</Th>
-              <Th>Destination</Th>
-              <Th>Method</Th>
-              <Th>Is Shipment</Th>
-              <Th>Status</Th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y">
-            {pagedBills.map((b, i) => (
-              <tr key={b.id ?? i} className="hover:bg-gray-50">
-                <Td>{(page - 1) * pageSize + i + 1}</Td>
-                <Td>{b.invoice_no || b.bill_no || "—"}</Td>
-                <Td>{b.pcs || "—"}</Td>
-                <Td>{b.weight || "—"}</Td>
-                <Td>{b.destination?.name || b.destination || b.des || "—"}</Td>
-                <Td>{b.shipment_method?.name || b.shipment_method}</Td>
-                <Td>{Number(b.is_shipment) === 1 ? "Yes" : "No"}</Td>
-                <Td>
-                  <span
-                    className={`px-3 py-1 text-xs rounded-full border ${getStatusStyle(
-                      b.status
-                    )}`}
-                  >
-                    {formatStatus(b.status)}
-                  </span>
-                </Td>
-              </tr>
-            ))}
-
-            {pagedBills.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-[920px] w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <td colSpan={8} className="py-8 text-center text-gray-500">
-                  No physical bills found.
-                </td>
+                <Th>SL</Th>
+                <Th>Invoice no</Th>
+                <Th className="text-right">Pcs</Th>
+                <Th className="text-right">Weight</Th>
+                <Th>Destination</Th>
+                <Th>Method</Th>
+                <Th>Is shipment</Th>
+                <Th>Status</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {pagedBills.map((b, i) => (
+                <tr key={b.id ?? i} className="transition-colors hover:bg-slate-50/70">
+                  <Td className="text-slate-500">{(page - 1) * pageSize + i + 1}</Td>
+                  <Td className="font-medium text-slate-900">{b.invoice_no || b.bill_no || "—"}</Td>
+                  <Td className="text-right tabular-nums">{b.pcs ?? "—"}</Td>
+                  <Td className="text-right tabular-nums">{b.weight ?? "—"}</Td>
+                  <Td>{b.destination?.name || b.destination || b.des || "—"}</Td>
+                  <Td>{b.shipment_method?.name || b.shipment_method || "—"}</Td>
+                  <Td>{Number(b.is_shipment) === 1 ? "Yes" : "No"}</Td>
+                  <Td>
+                    <span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusStyle(b.status)}`}>
+                      {formatStatus(b.status)}
+                    </span>
+                  </Td>
+                </tr>
+              ))}
+              {pagedBills.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm text-slate-500">No physical bills found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-        {/* Pagination */}
-        <div className="flex justify-between items-center px-6 py-4 bg-gray-50 border-t">
-          <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-          <div className="flex gap-2">
-            <button disabled={page === 1} onClick={() => setPage(page - 1)} className="btn">
-              Prev
-            </button>
-            <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="btn">
-              Next
-            </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 text-sm text-slate-600 sm:px-6">
+          <span>Showing <strong className="font-medium text-slate-900">{showingFrom}–{showingTo}</strong> of <strong className="font-medium text-slate-900">{bills.length}</strong> bills</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+            <span className="min-w-20 text-center tabular-nums">Page {page} of {totalPages}</span>
+            <button type="button" disabled={page === totalPages} onClick={() => setPage(page + 1)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
 
-/* --- SMALL COMPONENTS --- */
 const Detail = ({ label, value }) => (
-  <div>
-    <div className="text-sm text-gray-500">{label}</div>
-    <div className="text-lg font-semibold text-gray-900">{value || "—"}</div>
+  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
+    <dd className="mt-1 text-sm font-semibold text-slate-900">{value || "—"}</dd>
   </div>
 );
 
-const Th = ({ children }) => <th className="px-4 py-3 text-left">{children}</th>;
-const Td = ({ children }) => <td className="px-4 py-3">{children}</td>;
+const Th = ({ children, className = "" }) => <th scope="col" className={`whitespace-nowrap px-5 py-3 ${className}`}>{children}</th>;
+const Td = ({ children, className = "" }) => <td className={`whitespace-nowrap px-5 py-3.5 text-slate-700 ${className}`}>{children}</td>;
