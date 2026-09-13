@@ -1,5 +1,5 @@
 // src/features/Shipments/ShipmentBillView.jsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   getBillShipments,
   updateBillShipmentStatus,
@@ -7,7 +7,7 @@ import {
 } from "../../services/billShipmentApi";
 import { getShipmentStatuses } from "../../services/coreService";
 import { FaEye, FaEdit, FaTrash, FaSearch } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import EditShipmentModal from "./EditShipment";
 
@@ -60,10 +60,25 @@ const fmtDateTime = (iso) => {
 
 export default function ShipmentBillView() {
   const navigate = useNavigate();
-  
-  // --- State ---
-  const [q, setQ] = useState("");
-  const [statusId, setStatusId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const q = searchParams.get("search") ?? "";
+  const statusId = searchParams.get("shipment_status_id") ?? "";
+  const pageParam = Number(searchParams.get("page"));
+  const page = Number.isSafeInteger(pageParam) && pageParam > 0 ? pageParam : 1;
+
+  const updateListParams = useCallback((changes, replace = true) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      for (const [key, value] of Object.entries(changes)) {
+        if (value == null || value === "" || (key === "page" && value === 1)) {
+          next.delete(key);
+        } else {
+          next.set(key, String(value));
+        }
+      }
+      return next;
+    }, { replace });
+  }, [setSearchParams]);
   
   // Raw Data from API
   const [rows, setRows] = useState([]);
@@ -71,7 +86,6 @@ export default function ShipmentBillView() {
   const [err, setErr] = useState("");
   
   // Pagination
-  const [page, setPage] = useState(1);
   const pageSize = 10;
   const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, per_page: pageSize, total_items: 0 });
   const [reloadKey, setReloadKey] = useState(0);
@@ -121,7 +135,7 @@ export default function ShipmentBillView() {
           const total = Number(meta?.total_items ?? meta?.total ?? list.length);
           const lastPage = Math.max(1, Number(meta?.last_page) || Math.ceil(total / pageSize));
           if (page > lastPage) {
-            setPage(lastPage);
+            updateListParams({ page: lastPage });
             return;
           }
           setRows(list);
@@ -146,7 +160,7 @@ export default function ShipmentBillView() {
     loadShipments();
 
     return () => { mounted = false; };
-  }, [page, q, statusId, reloadKey]);
+  }, [page, q, statusId, reloadKey, updateListParams]);
 
   const pageRows = rows;
   const totalPages = pagination.last_page;
@@ -283,8 +297,7 @@ export default function ShipmentBillView() {
             <input
               value={q}
               onChange={(e) => {
-                setQ(e.target.value);
-                setPage(1);
+                updateListParams({ search: e.target.value, page: 1 });
               }}
               placeholder="Filter by Shipment #, AWB, Port..."
               className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:text-sm transition duration-150 ease-in-out"
@@ -296,8 +309,7 @@ export default function ShipmentBillView() {
             <select
               value={statusId}
               onChange={(e) => {
-                setStatusId(e.target.value);
-                setPage(1);
+                updateListParams({ shipment_status_id: e.target.value, page: 1 });
               }}
               className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
             >
@@ -468,7 +480,7 @@ export default function ShipmentBillView() {
                           <div className="flex items-center gap-2 justify-center">
                             <button
                               title="View"
-                              onClick={() => navigate(`/billshipment/${r.id}`)}
+                              onClick={() => navigate(`/billshipment/${r.id}`, { state: { shipment: r } })}
                               className="text-gray-400 hover:text-indigo-600 transition-colors"
                             >
                               <FaEye className="w-4 h-4" />
@@ -505,7 +517,7 @@ export default function ShipmentBillView() {
             <div className="flex items-center gap-2">
               <button
                 className="px-3 py-1 rounded-md border bg-white hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-white transition shadow-sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => updateListParams({ page: Math.max(1, page - 1) }, false)}
                 disabled={loading || page <= 1}
               >
                 Prev
@@ -515,7 +527,7 @@ export default function ShipmentBillView() {
               </div>
               <button
                 className="px-3 py-1 rounded-md border bg-white hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-white transition shadow-sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => updateListParams({ page: Math.min(totalPages, page + 1) }, false)}
                 disabled={loading || page >= totalPages}
               >
                 Next

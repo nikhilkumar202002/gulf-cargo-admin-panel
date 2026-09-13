@@ -1,7 +1,7 @@
 // src/features/Shipments/BillshipmentSingle.jsx
 import React, { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { getBillShipmentById, getPhysicalBills } from "../../services/billShipmentApi";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { getBillShipmentById, getBillShipments } from "../../services/billShipmentApi";
 import { FaArrowLeft } from "react-icons/fa";
 
 /* --- Status Helpers --- */
@@ -29,18 +29,60 @@ const statusMap = {
   21: "DELIVERY IN TRANSIT",
   22: "ARRIVED AT PORT",
 };
-const formatStatus = (status) => statusMap[status] || status;
+const formatStatus = (status) => {
+  const value = status?.name ?? status?.id ?? status;
+  return statusMap[value] || String(value ?? "—");
+};
 const getStatusStyle = (status) => {
-  const s = formatStatus(status)?.toLowerCase();
-  if (s.includes("delivered") || s.includes("cleared")) return "bg-green-100 text-green-800 border-green-300";
+  const s = formatStatus(status).toLowerCase();
   if (s.includes("waiting") || s.includes("hold") || s.includes("not delivered")) return "bg-red-100 text-red-800 border-red-300";
+  if (s.includes("delivered") || s.includes("cleared")) return "bg-green-100 text-green-800 border-green-300";
   if (s.includes("forwarded") || s.includes("arrived") || s.includes("out")) return "bg-blue-100 text-blue-800 border-blue-300";
   return "bg-amber-100 text-amber-800 border-amber-300";
+};
+
+const hasBillDetails = (bill) =>
+  Boolean(String(bill?.invoice_no ?? bill?.bill_no ?? "").trim()) &&
+  bill?.pcs != null && bill?.weight != null;
+
+const hasFullBills = (shipment) =>
+  Array.isArray(shipment?.custom_shipments) &&
+  shipment.custom_shipments.every(hasBillDetails);
+
+const matchesAttachedIds = (detail, candidate) => {
+  const attached = detail?.custom_shipments;
+  if (!Array.isArray(attached)) return true;
+  const candidateBills = candidate?.custom_shipments || [];
+  if (attached.length !== candidateBills.length) return false;
+  const candidateIds = new Set(candidateBills.map((bill) => String(bill.id)));
+  return attached.every((bill) => candidateIds.has(String(bill.custom_shipment_id ?? bill.bill_id ?? bill.id)));
+};
+
+const findShipmentWithBills = async (shipmentId) => {
+  const params = { per_page: 25 };
+  const firstPage = await getBillShipments({ ...params, page: 1 });
+  const findShipment = (rows) => rows.find((row) => String(row.id) === String(shipmentId));
+  const firstMatch = findShipment(firstPage);
+  if (firstMatch) return firstMatch;
+
+  const lastPage = Math.max(1, Number(firstPage.pagination?.last_page) || 1);
+  for (let page = 2; page <= lastPage; page += 4) {
+    const pages = await Promise.all(
+      Array.from({ length: Math.min(4, lastPage - page + 1) }, (_, index) =>
+        getBillShipments({ ...params, page: page + index })
+      )
+    );
+    const match = pages.map(findShipment).find(Boolean);
+    if (match) return match;
+  }
+  return null;
 };
 
 export default function BillshipmentSingle() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const passedShipment = location.state?.shipment;
 
   const [shipment, setShipment] = useState(null);
   const [bills, setBills] = useState([]);
@@ -52,44 +94,42 @@ export default function BillshipmentSingle() {
   const pageSize = 10;
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
       try {
         setLoading(true);
+        setError("");
 
         const sRes = await getBillShipmentById(id);
         const sData = sRes?.data?.data || sRes?.data || sRes;
-        setShipment(sData);
-
-        const attached = sData.custom_shipments || [];
-        const billIds = attached.map((i) =>
-          Number(i.bill_id || i.physical_bill_id || i.physicalbill_id || i.id)
-        );
-
-        const allBillsRes = await getPhysicalBills();
-        const allBills = Array.isArray(allBillsRes)
-          ? allBillsRes
-          : allBillsRes?.data || [];
-
-        const filtered = allBills.filter((b) => billIds.includes(Number(b.id)));
-
-        const merged = filtered.map((b) => {
-          const link = attached.find(
-            (i) =>
-              Number(i.bill_id || i.physical_bill_id || i.id) === Number(b.id)
-          );
-          return { ...b, status: link?.status || b.status };
-        });
-
-        setBills(merged);
+        if (!sData || typeof sData !== "object") throw new Error("Shipment not found");
+        let complete = sData;
+        if (!hasFullBills(sData)) {
+          if (String(passedShipment?.id) === String(id) &&
+              hasFullBills(passedShipment) && matchesAttachedIds(sData, passedShipment)) {
+            complete = { ...sData, custom_shipments: passedShipment.custom_shipments };
+          } else {
+            const fromList = await findShipmentWithBills(id);
+            if (!fromList || !hasFullBills(fromList)) {
+              throw new Error("Failed to load the attached bill details.");
+            }
+            complete = fromList;
+          }
+        }
+        if (!active) return;
+        setShipment(complete);
+        setBills(complete.custom_shipments);
+        setPage(1);
       } catch (err) {
-        setError("Failed to load shipment");
+        if (active) setError(err?.message || "Failed to load shipment");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     load();
-  }, [id]);
+    return () => { active = false; };
+  }, [id, passedShipment]);
 
   const totalPages = Math.ceil(bills.length / pageSize) || 1;
   const pagedBills = useMemo(() => {
@@ -148,7 +188,7 @@ export default function BillshipmentSingle() {
         <Detail label="Origin" value={shipment.origin_port?.name || shipment.origin_port} />
         <Detail label="Destination" value={shipment.destination_port?.name || shipment.destination_port} />
         <Detail label="Shipping Method" value={shipment.shipping_method?.name || shipment.shipping_method} />
-        <Detail label="Branch" value={shipment.branch_name} />
+        <Detail label="Branch" value={shipment.branch?.branch_name || shipment.branch_name} />
       </div>
 
       {/* --- PHYSICAL BILLS TABLE --- */}
@@ -182,14 +222,14 @@ export default function BillshipmentSingle() {
 
           <tbody className="divide-y">
             {pagedBills.map((b, i) => (
-              <tr key={i} className="hover:bg-gray-50">
+              <tr key={b.id ?? i} className="hover:bg-gray-50">
                 <Td>{(page - 1) * pageSize + i + 1}</Td>
                 <Td>{b.invoice_no || b.bill_no || "—"}</Td>
                 <Td>{b.pcs || "—"}</Td>
                 <Td>{b.weight || "—"}</Td>
-                <Td>{b.destination?.name || b.destination}</Td>
+                <Td>{b.destination?.name || b.destination || b.des || "—"}</Td>
                 <Td>{b.shipment_method?.name || b.shipment_method}</Td>
-                <Td>{b.is_shipment ? "Yes" : "No"}</Td>
+                <Td>{Number(b.is_shipment) === 1 ? "Yes" : "No"}</Td>
                 <Td>
                   <span
                     className={`px-3 py-1 text-xs rounded-full border ${getStatusStyle(
